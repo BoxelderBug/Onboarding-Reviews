@@ -2,9 +2,19 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import clsx from 'clsx';
-import { Plus, Pencil, Trash2, X, Check, Users } from 'lucide-react';
-import { buildReviews, displayDate, effectiveDate, effectiveTime, formatTime } from '@/lib/dateUtils';
-import type { AppData, Employee, Review, ReviewType } from '@/lib/types';
+import { Plus, Pencil, Trash2, X, Check, Users, Info, AlertTriangle, Loader2 } from 'lucide-react';
+import {
+  buildReviews,
+  displayDate,
+  effectiveDate,
+  effectiveTime,
+  formatTime,
+  parseLocalDate,
+  toDateString,
+} from '@/lib/dateUtils';
+import { checkBusy } from '@/lib/googleCalendar';
+import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
+import type { AppData, Employee, Holiday, Review, ReviewType } from '@/lib/types';
 
 function generateId(): string {
   return `emp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -21,12 +31,66 @@ function isAutoEmail(email: string, firstName: string, lastName: string): boolea
   return email === '' || email === autoEmail(firstName, lastName);
 }
 
-interface ReviewTypeLabels {
-  30: string;
-  60: string;
-  180: string;
+// ---------------------------------------------------------------------------
+// Date / holiday helpers
+// ---------------------------------------------------------------------------
+
+function findHolidayName(dateStr: string, holidays: Holiday[]): string | null {
+  if (!dateStr) return null;
+  const d = parseLocalDate(dateStr);
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  for (const h of holidays) {
+    if (h.recurring) {
+      const [, hMonth, hDay] = h.date.split('-').map(Number);
+      if (hMonth === month && hDay === day) return h.name;
+    } else {
+      if (h.date === dateStr) return h.name;
+    }
+  }
+  return null;
 }
-const REVIEW_LABELS: ReviewTypeLabels = {
+
+/** Returns warnings for a date string (weekend / holiday). */
+function getDateWarnings(dateStr: string, holidays: Holiday[]): string[] {
+  if (!dateStr) return [];
+  const warnings: string[] = [];
+  const dow = parseLocalDate(dateStr).getDay();
+  if (dow === 6) warnings.push('Falls on a Saturday');
+  if (dow === 0) warnings.push('Falls on a Sunday');
+  const holidayName = findHolidayName(dateStr, holidays);
+  if (holidayName) warnings.push(`Falls on ${holidayName}`);
+  return warnings;
+}
+
+/**
+ * If the review date was moved from its raw offset date (startDate + N days),
+ * return a human-readable reason. Returns null if the date was not moved.
+ */
+function getMovedMessage(
+  startDate: string,
+  days: number,
+  calculatedDate: string,
+  holidays: Holiday[]
+): string | null {
+  const base = parseLocalDate(startDate);
+  base.setDate(base.getDate() + days);
+  const rawDateStr = toDateString(base);
+  if (rawDateStr === calculatedDate) return null;
+
+  const dow = base.getDay();
+  if (dow === 6) return `Moved from ${displayDate(rawDateStr)} — falls on a Saturday`;
+  if (dow === 0) return `Moved from ${displayDate(rawDateStr)} — falls on a Sunday`;
+  const holidayName = findHolidayName(rawDateStr, holidays);
+  if (holidayName) return `Moved from ${displayDate(rawDateStr)} — ${holidayName}`;
+  return `Moved from ${displayDate(rawDateStr)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Review labels / colors
+// ---------------------------------------------------------------------------
+
+const REVIEW_LABELS: Record<ReviewType, string> = {
   30: '30-Day Review',
   60: '60-Day Review',
   180: '180-Day Review',
@@ -37,6 +101,10 @@ const REVIEW_BADGE_COLORS: Record<ReviewType, string> = {
   60: 'bg-orange-100 text-orange-700',
   180: 'bg-purple-100 text-purple-700',
 };
+
+// ---------------------------------------------------------------------------
+// Form state
+// ---------------------------------------------------------------------------
 
 interface FormState {
   id: string;
@@ -92,17 +160,37 @@ function formToEmployee(form: FormState): Employee {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+type BusyStatus = 'idle' | 'checking' | 'busy' | 'free';
+const IDLE_BUSY: Record<ReviewType, BusyStatus> = { 30: 'idle', 60: 'idle', 180: 'idle' };
+
 interface EmployeesTabProps {
   data: AppData;
   onChange: (data: AppData) => void;
 }
 
 export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
+  const { isConnected, accessToken } = useGoogleCalendar();
+
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(buildEmptyForm());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [busyStatus, setBusyStatus] = useState<Record<ReviewType, BusyStatus>>(IDLE_BUSY);
 
+  // Key that changes whenever an effective date/time changes — drives freeBusy checks
+  const reviewCheckKey = form.reviews
+    .map((r) => {
+      const d = r.overrideEnabled ? r.overrideDate : r.calculatedDate;
+      const t = r.overrideEnabled ? r.overrideTime : r.calculatedTime;
+      return `${r.type}:${d}:${t}`;
+    })
+    .join('|');
+
+  // Recalculate reviews when startDate or positionId changes
   const recalcReviews = useCallback(
     (startDate: string, positionId: string, existingReviews: Review[]): Review[] => {
       if (!startDate) return existingReviews;
@@ -128,15 +216,59 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.startDate, form.positionId, showForm]);
 
+  // Reset busy status when start date changes
+  useEffect(() => {
+    setBusyStatus(IDLE_BUSY);
+  }, [form.startDate]);
+
+  // Run freeBusy checks (debounced 600ms) whenever effective dates/times change
+  useEffect(() => {
+    if (!showForm || !isConnected || !accessToken || !form.startDate || form.reviews.length === 0) return;
+
+    const position = data.settings.positions.find((p) => p.id === form.positionId);
+    const duration = position?.duration ?? data.settings.defaultDuration;
+    const timeZone = data.settings.calendarTimeZone;
+    let cancelled = false;
+
+    const timer = setTimeout(async () => {
+      for (const review of form.reviews) {
+        if (cancelled) break;
+        const effDate = review.overrideEnabled ? review.overrideDate : review.calculatedDate;
+        const effTime = review.overrideEnabled ? review.overrideTime : review.calculatedTime;
+        if (!effDate || !effTime) continue;
+
+        setBusyStatus((prev) => ({ ...prev, [review.type]: 'checking' }));
+        try {
+          const busy = await checkBusy(accessToken, effDate, effTime, duration, timeZone);
+          if (!cancelled) {
+            setBusyStatus((prev) => ({ ...prev, [review.type]: busy ? 'busy' : 'free' }));
+          }
+        } catch {
+          if (!cancelled) {
+            setBusyStatus((prev) => ({ ...prev, [review.type]: 'idle' }));
+          }
+        }
+      }
+    }, 600);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewCheckKey, isConnected, accessToken, showForm]);
+
   function handleOpenAdd() {
     setForm(buildEmptyForm());
     setEditingId(null);
+    setBusyStatus(IDLE_BUSY);
     setShowForm(true);
   }
 
   function handleOpenEdit(emp: Employee) {
     setForm(employeeToForm(emp));
     setEditingId(emp.id);
+    setBusyStatus(IDLE_BUSY);
     setShowForm(true);
   }
 
@@ -144,12 +276,12 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
     setShowForm(false);
     setEditingId(null);
     setForm(buildEmptyForm());
+    setBusyStatus(IDLE_BUSY);
   }
 
   function handleFieldChange(field: keyof FormState, value: string | boolean) {
     setForm((prev) => {
       const updated = { ...prev, [field]: value };
-
       if (field === 'firstName' || field === 'lastName') {
         const fn = field === 'firstName' ? (value as string) : prev.firstName;
         const ln = field === 'lastName' ? (value as string) : prev.lastName;
@@ -157,7 +289,6 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
           updated.email = autoEmail(fn, ln);
         }
       }
-
       return updated;
     });
   }
@@ -287,9 +418,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                 >
                   <option value="">— Select position —</option>
                   {data.settings.positions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
+                    <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
               </div>
@@ -302,9 +431,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                 >
                   <option value="">— Select manager —</option>
                   {data.settings.managers.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
+                    <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
                 </select>
               </div>
@@ -353,16 +480,27 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
             {/* Review dates */}
             {form.startDate && form.reviews.length > 0 && (
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Review Dates</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-gray-700">Review Dates</h3>
+                  {isConnected && (
+                    <span className="text-xs text-gray-400">Checking against your Google Calendar</span>
+                  )}
+                </div>
                 <div className="space-y-4">
                   {(form.reviews as Review[]).map((review) => {
-                    const calcDate = review.calculatedDate;
-                    const calcTime = review.calculatedTime;
-                    const effDate = review.overrideEnabled ? review.overrideDate : calcDate;
-                    const effTime = review.overrideEnabled ? review.overrideTime : calcTime;
+                    const effDate = review.overrideEnabled ? review.overrideDate : review.calculatedDate;
+                    const effTime = review.overrideEnabled ? review.overrideTime : review.calculatedTime;
+                    const movedMsg = !review.overrideEnabled
+                      ? getMovedMessage(form.startDate, review.type, review.calculatedDate, data.holidays)
+                      : null;
+                    const overrideWarnings = review.overrideEnabled
+                      ? getDateWarnings(review.overrideDate, data.holidays)
+                      : [];
+                    const busy = busyStatus[review.type];
 
                     return (
                       <div key={review.type} className="border border-gray-100 rounded-lg p-4 bg-gray-50">
+                        {/* Header row */}
                         <div className="flex items-center justify-between mb-2">
                           <span
                             className={clsx(
@@ -379,6 +517,29 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                           )}
                         </div>
 
+                        {/* Moved notice */}
+                        {movedMsg && (
+                          <div className="flex items-center gap-1.5 mt-1.5 mb-1 text-xs text-blue-700 bg-blue-50 rounded px-2.5 py-1">
+                            <Info className="w-3.5 h-3.5 shrink-0" />
+                            {movedMsg}
+                          </div>
+                        )}
+
+                        {/* Calendar busy check */}
+                        {busy === 'checking' && (
+                          <div className="flex items-center gap-1.5 mt-1.5 mb-1 text-xs text-gray-500">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                            Checking calendar...
+                          </div>
+                        )}
+                        {busy === 'busy' && (
+                          <div className="flex items-center gap-1.5 mt-1.5 mb-1 text-xs text-amber-700 bg-amber-50 rounded px-2.5 py-1">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            Scheduling conflict — something is already on your calendar at this time
+                          </div>
+                        )}
+
+                        {/* Override toggle */}
                         <div className="flex items-center gap-2 mt-2">
                           <input
                             id={`override-${review.type}`}
@@ -392,27 +553,49 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                           </label>
                         </div>
 
+                        {/* Override inputs */}
                         {review.overrideEnabled && (
-                          <div className="grid grid-cols-2 gap-3 mt-3">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
-                              <input
-                                type="date"
-                                value={review.overrideDate}
-                                onChange={(e) => handleOverrideDateChange(review.type, e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              />
+                          <>
+                            <div className="grid grid-cols-2 gap-3 mt-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                                <input
+                                  type="date"
+                                  value={review.overrideDate}
+                                  onChange={(e) => handleOverrideDateChange(review.type, e.target.value)}
+                                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Time</label>
+                                <input
+                                  type="time"
+                                  value={review.overrideTime}
+                                  onChange={(e) => handleOverrideTimeChange(review.type, e.target.value)}
+                                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
                             </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Time</label>
-                              <input
-                                type="time"
-                                value={review.overrideTime}
-                                onChange={(e) => handleOverrideTimeChange(review.type, e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              />
-                            </div>
-                          </div>
+
+                            {/* Override warnings (weekend / holiday) */}
+                            {overrideWarnings.map((w) => (
+                              <div
+                                key={w}
+                                className="flex items-center gap-1.5 mt-2 text-xs text-amber-700 bg-amber-50 rounded px-2.5 py-1"
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                {w}
+                              </div>
+                            ))}
+
+                            {/* Override calendar conflict */}
+                            {busy === 'busy' && (
+                              <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-700 bg-amber-50 rounded px-2.5 py-1">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                Scheduling conflict — something is already on your calendar at this time
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     );
@@ -480,9 +663,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                       {emp.managerId ? (
-                        managerMap.get(emp.managerId) ?? (
-                          <span className="text-gray-400 italic text-xs">—</span>
-                        )
+                        managerMap.get(emp.managerId) ?? <span className="text-gray-400 italic text-xs">—</span>
                       ) : (
                         <span className="text-gray-400 italic text-xs">—</span>
                       )}
@@ -494,9 +675,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                       const review = emp.reviews.find((r) => r.type === type);
                       if (!review) {
                         return (
-                          <td key={type} className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                            —
-                          </td>
+                          <td key={type} className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">—</td>
                         );
                       }
                       const eDate = effectiveDate(review);
