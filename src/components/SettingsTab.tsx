@@ -29,6 +29,7 @@ interface ScheduleEventForm {
   id: string;
   title: string;
   description: string;
+  prependEmployees: boolean;
   startTime: string;
   duration: string;
   inviteEmployee: boolean;
@@ -38,14 +39,16 @@ interface ScheduleEventForm {
 
 function emptyEventForm(): ScheduleEventForm {
   return {
-    id: generateId(), title: '', description: '', startTime: '09:00',
-    duration: '60', inviteEmployee: true, inviteManager: true, additionalEmails: '',
+    id: generateId(), title: '', description: '', prependEmployees: false,
+    startTime: '09:00', duration: '60', inviteEmployee: true, inviteManager: true,
+    additionalEmails: '',
   };
 }
 
 function eventToForm(e: ScheduleEvent): ScheduleEventForm {
   return {
     id: e.id, title: e.title, description: e.description,
+    prependEmployees: e.prependEmployees ?? false,
     startTime: e.startTime, duration: String(e.duration),
     inviteEmployee: e.inviteEmployee, inviteManager: e.inviteManager,
     additionalEmails: e.additionalEmails,
@@ -88,6 +91,7 @@ function ScheduleDaySection({ title, events, onChange }: ScheduleDaySectionProps
       id: editingId ?? form.id,
       title: form.title.trim(),
       description: form.description.trim(),
+      prependEmployees: form.prependEmployees,
       startTime: form.startTime,
       duration: parseInt(form.duration, 10) || 60,
       inviteEmployee: form.inviteEmployee,
@@ -166,6 +170,17 @@ function ScheduleDaySection({ title, events, onChange }: ScheduleDaySectionProps
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                 placeholder="Optional agenda or notes"
               />
+              <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.prependEmployees}
+                  onChange={(e) => setForm((f) => ({ ...f, prependEmployees: e.target.checked }))}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-600">
+                  List employees at the top of the description
+                </span>
+              </label>
             </div>
 
             {/* Time + Duration */}

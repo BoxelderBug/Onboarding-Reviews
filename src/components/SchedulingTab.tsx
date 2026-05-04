@@ -111,6 +111,16 @@ export default function SchedulingTab({ data, onChange }: Props) {
           .forEach((e) => attendeeEmails.push(e));
       }
 
+      let description = event.description || '';
+      if (event.prependEmployees && selectedEmployees.length > 0) {
+        const names = selectedEmployees
+          .map((e) => `${e.firstName} ${e.lastName}`)
+          .join(', ');
+        description = description
+          ? `New Employees: ${names}\n\n${description}`
+          : `New Employees: ${names}`;
+      }
+
       const gcalEventId = await createCalendarEvent(
         accessToken,
         event.title,
@@ -119,7 +129,7 @@ export default function SchedulingTab({ data, onChange }: Props) {
         event.duration,
         settings.calendarTimeZone,
         attendeeEmails,
-        event.description || undefined
+        description || undefined
       );
 
       const record: SchedulePushRecord = {
