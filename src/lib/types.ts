@@ -21,6 +21,7 @@ export interface ScheduleEvent {
   title: string;
   description: string;
   prependEmployees?: boolean;
+  locationText?: string;
   locationId?: string;
   startTime: string; // HH:MM
   duration: number; // minutes

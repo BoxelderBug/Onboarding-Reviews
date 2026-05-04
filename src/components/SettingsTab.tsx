@@ -32,6 +32,7 @@ interface ScheduleEventForm {
   title: string;
   description: string;
   prependEmployees: boolean;
+  locationText: string;
   locationId: string;
   startTime: string;
   duration: string;
@@ -43,7 +44,7 @@ interface ScheduleEventForm {
 function emptyEventForm(): ScheduleEventForm {
   return {
     id: generateId(), title: '', description: '', prependEmployees: false,
-    locationId: '', startTime: '09:00', duration: '60',
+    locationText: '', locationId: '', startTime: '09:00', duration: '60',
     inviteEmployee: true, inviteManager: true, additionalEmails: '',
   };
 }
@@ -52,6 +53,7 @@ function eventToForm(e: ScheduleEvent): ScheduleEventForm {
   return {
     id: e.id, title: e.title, description: e.description,
     prependEmployees: e.prependEmployees ?? false,
+    locationText: e.locationText ?? '',
     locationId: e.locationId ?? '',
     startTime: e.startTime, duration: String(e.duration),
     inviteEmployee: e.inviteEmployee, inviteManager: e.inviteManager,
@@ -97,6 +99,7 @@ function ScheduleDaySection({ title, events, locations, onChange }: ScheduleDayS
       title: form.title.trim(),
       description: form.description.trim(),
       prependEmployees: form.prependEmployees,
+      locationText: form.locationText.trim() || undefined,
       locationId: form.locationId || undefined,
       startTime: form.startTime,
       duration: parseInt(form.duration, 10) || 60,
@@ -190,21 +193,35 @@ function ScheduleDaySection({ title, events, locations, onChange }: ScheduleDayS
             </div>
 
             {/* Location */}
-            {locations.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+              <input
+                type="text"
+                value={form.locationText}
+                onChange={(e) => setForm((f) => ({ ...f, locationText: e.target.value, locationId: '' }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g. Conference Room A, 730 Tower Drive"
+              />
+              {locations.length > 0 && (
                 <select
                   value={form.locationId}
-                  onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  onChange={(e) => {
+                    const loc = locations.find((l) => l.id === e.target.value);
+                    setForm((f) => ({
+                      ...f,
+                      locationId: e.target.value,
+                      locationText: loc ? loc.name : f.locationText,
+                    }));
+                  }}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white mt-2"
                 >
-                  <option value="">— No location —</option>
+                  <option value="">— Or pick a saved room (fills text above) —</option>
                   {locations.map((loc) => (
                     <option key={loc.id} value={loc.id}>{loc.name}</option>
                   ))}
                 </select>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Time + Duration */}
             <div className="grid grid-cols-2 gap-4">
@@ -317,10 +334,10 @@ function ScheduleDaySection({ title, events, locations, onChange }: ScheduleDayS
                     {ev.description && (
                       <div className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{ev.description}</div>
                     )}
-                    {ev.locationId && (
+                    {(ev.locationText || ev.locationId) && (
                       <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
                         <MapPin className="w-3 h-3 shrink-0" />
-                        {locations.find((l) => l.id === ev.locationId)?.name ?? ev.locationId}
+                        {ev.locationText || locations.find((l) => l.id === ev.locationId)?.name}
                       </div>
                     )}
                   </td>

@@ -138,7 +138,7 @@ export default function SchedulingTab({ data, onChange }: Props) {
         settings.calendarTimeZone,
         attendeeEmails,
         description || undefined,
-        eventLocation?.name,
+        event.locationText || eventLocation?.name,
       );
 
       const record: SchedulePushRecord = {
@@ -256,10 +256,10 @@ export default function SchedulingTab({ data, onChange }: Props) {
               {event.description}
             </div>
           )}
-          {eventLocation && (
+          {(event.locationText || eventLocation) && (
             <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
               <MapPin className="w-3 h-3 shrink-0" />
-              {eventLocation.name}
+              {event.locationText || eventLocation?.name}
             </div>
           )}
         </td>
