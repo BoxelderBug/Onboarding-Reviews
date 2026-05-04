@@ -9,6 +9,7 @@ import {
   ClipboardList,
   CalendarPlus,
   CalendarCheck,
+  CalendarOff,
   Loader2,
   AlertTriangle,
 } from 'lucide-react';
@@ -20,7 +21,7 @@ import {
   displayDate,
   formatTime,
 } from '@/lib/dateUtils';
-import { checkBusy, createCalendarEvent } from '@/lib/googleCalendar';
+import { checkBusy, createCalendarEvent, deleteCalendarEvent } from '@/lib/googleCalendar';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
 import type { AppData, Employee, Review, ReviewType } from '@/lib/types';
 
@@ -154,6 +155,19 @@ function CalendarCell({
     }
   }, [accessToken, row, positionDurationMinutes, timeZone, managerEmail, onUpdateReview]);
 
+  const handleUnschedule = useCallback(async () => {
+    if (!accessToken || !row.review.gcalEventId) return;
+    setPushState('pushing');
+    try {
+      await deleteCalendarEvent(accessToken, row.review.gcalEventId);
+      onUpdateReview(row.employee.id, { ...row.review, gcalEventId: undefined });
+      setPushState('idle');
+    } catch {
+      setPushState('synced'); // revert — event still exists
+      alert('Failed to remove the calendar event. Please try again.');
+    }
+  }, [accessToken, row, onUpdateReview]);
+
   if (!isConnected) {
     return <span className="text-gray-300 text-xs">—</span>;
   }
@@ -164,13 +178,28 @@ function CalendarCell({
 
   if (pushState === 'synced') {
     return (
-      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
-        <CalendarCheck className="w-4 h-4" />
-        {conflict && (
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-        )}
-        Synced
-      </span>
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
+          <CalendarCheck className="w-4 h-4" />
+          {conflict && (
+            <span
+              title="Conflict detected — another event was already scheduled at this time when this was pushed"
+              className="cursor-help"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+            </span>
+          )}
+          Synced
+        </span>
+        <button
+          onClick={handleUnschedule}
+          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded hover:bg-red-50 hover:text-red-600 transition-colors"
+          title="Remove this event from Google Calendar"
+        >
+          <CalendarOff className="w-3.5 h-3.5" />
+          Unschedule
+        </button>
+      </div>
     );
   }
 
