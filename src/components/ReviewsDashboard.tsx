@@ -326,7 +326,7 @@ function ReviewTableRow({
   async function handleToggle() {
     const next = !expanded;
     setExpanded(next);
-    if (next && dayEvents === null && accessToken) {
+    if (next && dayEvents === null && isConnected && accessToken) {
       setLoadingEvents(true);
       setEventsError(false);
       try {
@@ -367,17 +367,15 @@ function ReviewTableRow({
             >
               <ArrowUpRight className="w-3.5 h-3.5" />
             </a>
-            {isConnected && (
-              <button
-                onClick={handleToggle}
-                title={expanded ? 'Hide calendar preview' : 'Preview calendar for this day'}
-                className="text-gray-400 hover:text-blue-600 transition-colors"
-              >
-                {expanded
-                  ? <ChevronUp className="w-3.5 h-3.5" />
-                  : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-            )}
+            <button
+              onClick={handleToggle}
+              title={expanded ? 'Hide calendar preview' : 'Preview calendar for this day'}
+              className="text-gray-400 hover:text-blue-600 transition-colors"
+            >
+              {expanded
+                ? <ChevronUp className="w-3.5 h-3.5" />
+                : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
           </div>
         </td>
         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
@@ -411,16 +409,19 @@ function ReviewTableRow({
       {expanded && (
         <tr>
           <td colSpan={COL_COUNT} className="px-6 py-3 bg-blue-50 border-b border-gray-100">
-            {loadingEvents && (
+            {!isConnected && (
+              <p className="text-xs text-gray-500 py-1">Connect Google Calendar in Settings to preview this day&apos;s schedule.</p>
+            )}
+            {isConnected && loadingEvents && (
               <div className="flex items-center gap-2 text-xs text-gray-500 py-1">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 Loading calendar for {displayDate(row.effDate)}…
               </div>
             )}
-            {eventsError && (
+            {isConnected && eventsError && (
               <p className="text-xs text-red-600 py-1">Failed to load calendar events.</p>
             )}
-            {!loadingEvents && !eventsError && dayEvents !== null && (
+            {isConnected && !loadingEvents && !eventsError && dayEvents !== null && (
               <div className="py-1">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                   {displayDate(row.effDate)} — What&apos;s on your calendar
