@@ -95,9 +95,9 @@ export default function SchedulingTab({ data, onChange }: Props) {
         });
       }
       if (event.inviteManager) {
-        const managerIds = [
-          ...new Set(selectedEmployees.map((e) => e.managerId).filter(Boolean) as string[]),
-        ];
+        const managerIds = Array.from(
+          new Set(selectedEmployees.map((e) => e.managerId).filter(Boolean) as string[])
+        );
         managerIds.forEach((mid) => {
           const mgr = settings.managers.find((m) => m.id === mid);
           if (mgr?.email) attendeeEmails.push(mgr.email);
@@ -209,9 +209,9 @@ export default function SchedulingTab({ data, onChange }: Props) {
       });
     }
     if (event.inviteManager) {
-      const managerIds = [
-        ...new Set(selectedEmployees.map((e) => e.managerId).filter(Boolean) as string[]),
-      ];
+      const managerIds = Array.from(
+        new Set(selectedEmployees.map((e) => e.managerId).filter(Boolean) as string[])
+      );
       managerIds.forEach((mid) => {
         const mgr = settings.managers.find((m) => m.id === mid);
         if (mgr?.email) previewEmails.push(mgr.email);
