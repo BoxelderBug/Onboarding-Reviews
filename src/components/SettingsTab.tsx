@@ -489,8 +489,10 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
   const [fetchRoomsMsg, setFetchRoomsMsg] = useState<string | null>(null);
 
   const [defaultTime, setDefaultTime] = useState(settings.defaultStartTime);
+  const [defaultTimeSaved, setDefaultTimeSaved] = useState(false);
   const [defaultDuration, setDefaultDuration] = useState(String(settings.defaultDuration));
   const [defaultsSaved, setDefaultsSaved] = useState(false);
+  const [showLocations, setShowLocations] = useState(false);
 
   const [timezone, setTimezone] = useState(settings.calendarTimeZone);
   const [timezoneSaved, setTimezoneSaved] = useState(false);
@@ -613,10 +615,17 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
 
   // --- Defaults ---
 
+  function handleSaveDefaultTime() {
+    if (!defaultTime) return;
+    updateSettings({ defaultStartTime: defaultTime });
+    setDefaultTimeSaved(true);
+    setTimeout(() => setDefaultTimeSaved(false), 2000);
+  }
+
   function handleSaveDefaults() {
     const dur = parseInt(defaultDuration, 10);
-    if (!defaultTime || isNaN(dur) || dur < 1) return;
-    updateSettings({ defaultStartTime: defaultTime, defaultDuration: dur });
+    if (isNaN(dur) || dur < 1) return;
+    updateSettings({ defaultDuration: dur });
     setDefaultsSaved(true);
     setTimeout(() => setDefaultsSaved(false), 2000);
   }
@@ -761,6 +770,25 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
             </table>
           </div>
         )}
+      </div>
+
+        {/* Fallback default start time */}
+        <div className="mt-4 flex items-center gap-3">
+          <span className="text-sm text-gray-600 shrink-0">Fallback start time <span className="text-xs text-gray-400">(used when employee has no position)</span></span>
+          <input
+            type="time"
+            value={defaultTime}
+            onChange={(e) => setDefaultTime(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={handleSaveDefaultTime}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Check className="w-3.5 h-3.5" />Save
+          </button>
+          {defaultTimeSaved && <span className="text-sm text-green-600 font-medium">Saved!</span>}
+        </div>
       </div>
 
       {/* Managers */}
@@ -908,30 +936,47 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
 
       {/* Locations */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-gray-900">Meeting Room Locations</h2>
+        <button
+          type="button"
+          onClick={() => setShowLocations((v) => !v)}
+          className="w-full flex items-center justify-between mb-1 group"
+        >
           <div className="flex items-center gap-2">
-            {isConnected && (
-              <button
-                onClick={handleFetchRooms}
-                disabled={fetchingRooms}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
-              >
-                {fetchingRooms
-                  ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : <RefreshCw className="w-4 h-4" />}
-                Import from Google Calendar
-              </button>
-            )}
-            {!showAddLocation && (
-              <button
-                onClick={handleOpenAddLocation}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                <Plus className="w-4 h-4" />Add Location
-              </button>
+            <h2 className="text-base font-semibold text-gray-900">Meeting Room Locations</h2>
+            {settings.locations.length > 0 && (
+              <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                {settings.locations.length}
+              </span>
             )}
           </div>
+          {showLocations
+            ? <ChevronDown className="w-4 h-4 text-gray-400" />
+            : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        </button>
+
+        {showLocations && (
+        <>
+        <div className="flex items-center justify-end gap-2 mb-4">
+          {isConnected && (
+            <button
+              onClick={handleFetchRooms}
+              disabled={fetchingRooms}
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
+            >
+              {fetchingRooms
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <RefreshCw className="w-4 h-4" />}
+              Import from Google Calendar
+            </button>
+          )}
+          {!showAddLocation && (
+            <button
+              onClick={handleOpenAddLocation}
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" />Add Location
+            </button>
+          )}
         </div>
 
         {fetchRoomsMsg && (
@@ -1042,6 +1087,8 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
             </table>
           </div>
         )}
+        </>
+        )}
       </div>
 
       {/* First Day Schedule */}
@@ -1060,26 +1107,18 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
         onChange={(secondDaySchedule) => updateSettings({ secondDaySchedule })}
       />
 
-      {/* Default Settings */}
+      {/* Default Duration */}
       <div>
-        <h2 className="text-base font-semibold text-gray-900 mb-4">Default Settings</h2>
+        <h2 className="text-base font-semibold text-gray-900 mb-4">Default Duration</h2>
         <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
-          <p className="text-sm text-gray-500 mb-4">Used when a position has no specific time configured or an employee has no position assigned.</p>
-          <div className="grid grid-cols-2 gap-4 max-w-md">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Default Start Time</label>
-              <input type="time" value={defaultTime} onChange={(e) => setDefaultTime(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Default Duration (min)</label>
-              <input type="number" min="1" max="480" value={defaultDuration} onChange={(e) => setDefaultDuration(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-center gap-3">
-            <button onClick={handleSaveDefaults} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-              <Check className="w-4 h-4" />Save Defaults
+          <p className="text-sm text-gray-500 mb-4">Fallback review duration when an employee has no position assigned.</p>
+          <div className="flex items-center gap-3 max-w-xs">
+            <input type="number" min="1" max="480" value={defaultDuration} onChange={(e) => setDefaultDuration(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <span className="text-sm text-gray-500 shrink-0">min</span>
+            <button onClick={handleSaveDefaults} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shrink-0">
+              <Check className="w-4 h-4" />Save
             </button>
-            {defaultsSaved && <span className="text-sm text-green-600 font-medium">Saved!</span>}
+            {defaultsSaved && <span className="text-sm text-green-600 font-medium shrink-0">Saved!</span>}
           </div>
         </div>
       </div>
