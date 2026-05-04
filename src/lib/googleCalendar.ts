@@ -117,6 +117,28 @@ export interface CalendarRoom {
 }
 
 export async function fetchCalendarRooms(accessToken: string): Promise<CalendarRoom[]> {
+  // Try Admin SDK first — returns all org room resources across every building
+  try {
+    const adminRes = await fetch(
+      'https://admin.googleapis.com/admin/directory/v1/customer/my_customer/resources/calendars?maxResults=500',
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (adminRes.ok) {
+      const data = await adminRes.json();
+      const items: Array<{ resourceName: string; resourceEmail: string }> = data.items ?? [];
+      if (items.length > 0) {
+        return items.map((item) => ({
+          id: item.resourceEmail,
+          name: item.resourceName,
+          resourceEmail: item.resourceEmail,
+        }));
+      }
+    }
+  } catch {
+    // fall through to calendarList
+  }
+
+  // Fallback: calendarList only returns rooms the user is personally subscribed to
   const res = await fetch(
     'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250',
     { headers: { Authorization: `Bearer ${accessToken}` } }

@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ClipboardList, Users, CalendarDays, Settings2, ListChecks } from 'lucide-react';
 import clsx from 'clsx';
 import { loadData, saveData, DEFAULT_DATA } from '@/lib/storage';
 import { buildReviews } from '@/lib/dateUtils';
-import type { AppData, Employee, Review } from '@/lib/types';
+import { fetchCalendarRooms } from '@/lib/googleCalendar';
+import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
+import type { AppData, Employee, Location, Review } from '@/lib/types';
 import ReviewsDashboard from '@/components/ReviewsDashboard';
 import EmployeesTab from '@/components/EmployeesTab';
 import HolidaysTab from '@/components/HolidaysTab';
@@ -42,12 +44,49 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('reviews');
   const [data, setData] = useState<AppData>(DEFAULT_DATA);
   const [loaded, setLoaded] = useState(false);
+  const { accessToken } = useGoogleCalendar();
+  const prevTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     const stored = loadData();
     setData(stored);
     setLoaded(true);
   }, []);
+
+  // Auto-import room resources whenever a new Google Calendar session starts
+  useEffect(() => {
+    if (!accessToken || accessToken === prevTokenRef.current) return;
+    prevTokenRef.current = accessToken;
+
+    fetchCalendarRooms(accessToken)
+      .then((rooms) => {
+        if (rooms.length === 0) return;
+        setData((prev) => {
+          const existingEmails = new Set(
+            prev.settings.locations
+              .map((l) => l.resourceEmail)
+              .filter((e): e is string => Boolean(e))
+          );
+          const newRooms = rooms.filter((r) => !existingEmails.has(r.resourceEmail));
+          if (newRooms.length === 0) return prev;
+          const added: Location[] = newRooms.map((r, i) => ({
+            id: `loc_auto_${Date.now()}_${i}`,
+            name: r.name,
+            resourceEmail: r.resourceEmail,
+          }));
+          const updated: AppData = {
+            ...prev,
+            settings: {
+              ...prev.settings,
+              locations: [...prev.settings.locations, ...added],
+            },
+          };
+          saveData(updated);
+          return updated;
+        });
+      })
+      .catch(() => {});
+  }, [accessToken]);
 
   function handleDataChange(newData: AppData) {
     setData(newData);
