@@ -4,8 +4,8 @@ import './globals.css';
 import { GoogleCalendarProvider } from '@/context/GoogleCalendarContext';
 
 export const metadata: Metadata = {
-  title: 'Onboarding Reviews | Adams Pest Control',
-  description: 'Schedule and track 30/60/180-day employee onboarding reviews',
+  title: 'HR Comm/Sched Center | Adams Pest Control',
+  description: 'HR communication and scheduling center for Adams Pest Control',
 };
 
 export default function RootLayout({

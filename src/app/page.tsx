@@ -133,7 +133,7 @@ export default function Home() {
               </div>
               <div>
                 <h1 className="text-lg font-semibold text-gray-900">
-                  Onboarding Reviews
+                  HR Comm/Sched Center
                 </h1>
                 <p className="text-xs text-gray-500">Adams Pest Control</p>
               </div>

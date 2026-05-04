@@ -34,6 +34,113 @@ function isAutoEmail(email: string, firstName: string, lastName: string): boolea
 }
 
 // ---------------------------------------------------------------------------
+// Block schedule helpers
+// ---------------------------------------------------------------------------
+
+function parseFormattedTime(t: string): number {
+  const match = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!match) return -1;
+  let h = parseInt(match[1]);
+  const m = parseInt(match[2]);
+  const ampm = match[3].toUpperCase();
+  if (ampm === 'PM' && h !== 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+function hourLabel(h: number): string {
+  if (h === 0) return '12a';
+  if (h === 12) return '12p';
+  return h > 12 ? `${h - 12}p` : `${h}a`;
+}
+
+interface BlockScheduleProps {
+  events: CalendarEvent[];
+  reviewMin: number; // minutes since midnight for the review time
+}
+
+function BlockSchedule({ events, reviewMin }: BlockScheduleProps) {
+  const WIN_START = 7 * 60;  // 7 AM
+  const WIN_END   = 19 * 60; // 7 PM
+  const WIN_LEN   = WIN_END - WIN_START;
+
+  const toPct = (min: number) =>
+    Math.max(0, Math.min(100, ((min - WIN_START) / WIN_LEN) * 100));
+
+  const allDay = events.filter((e) => e.isAllDay);
+  const timed  = events.filter((e) => !e.isAllDay);
+
+  const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+
+  return (
+    <div>
+      {allDay.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {allDay.map((ev) => (
+            <span key={ev.id} className="text-xs bg-gray-100 text-gray-600 rounded px-2 py-0.5">
+              All day: {ev.title}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative h-48 select-none">
+        {/* Hour grid */}
+        {HOURS.map((h) => (
+          <div
+            key={h}
+            className="absolute w-full pointer-events-none"
+            style={{ top: `${toPct(h * 60)}%` }}
+          >
+            <div className="flex items-center gap-1">
+              <span className="text-gray-300 text-[10px] w-6 shrink-0 text-right leading-none">
+                {hourLabel(h)}
+              </span>
+              <div className="flex-1 border-t border-gray-100" />
+            </div>
+          </div>
+        ))}
+
+        {/* Event blocks */}
+        <div className="absolute left-8 right-0 top-0 bottom-0">
+          {timed.map((ev) => {
+            const start = parseFormattedTime(ev.startTime);
+            const end   = parseFormattedTime(ev.endTime);
+            if (start < 0 || end < 0) return null;
+            const top    = toPct(start);
+            const bottom = toPct(end);
+            const height = Math.max(2, bottom - top);
+            return (
+              <div
+                key={ev.id}
+                className="absolute left-0.5 right-0.5 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 overflow-hidden"
+                style={{ top: `${top}%`, height: `${height}%` }}
+              >
+                <p className="text-[11px] font-medium text-blue-700 truncate leading-tight">{ev.title}</p>
+                <p className="text-[10px] text-blue-400 leading-tight">{ev.startTime} – {ev.endTime}</p>
+              </div>
+            );
+          })}
+
+          {/* Review time marker */}
+          {reviewMin >= WIN_START && reviewMin <= WIN_END && (
+            <div
+              className="absolute left-0 right-0 z-10 pointer-events-none"
+              style={{ top: `${toPct(reviewMin)}%` }}
+            >
+              <div className="border-t-2 border-red-400 border-dashed relative">
+                <span className="absolute -top-3.5 right-0 text-[10px] font-semibold text-red-500 bg-white px-1 rounded">
+                  this review
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Date / holiday helpers
 // ---------------------------------------------------------------------------
 
@@ -612,6 +719,10 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                       : [];
                     const busy = busyStatus[review.type];
 
+                    const reviewMin = effTime
+                      ? parseInt(effTime.split(':')[0]) * 60 + parseInt(effTime.split(':')[1])
+                      : -1;
+
                     return (
                       <div key={review.type} className="border border-gray-100 rounded-lg p-4 bg-gray-50">
                         {/* Header row */}
@@ -624,60 +735,40 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                           >
                             {REVIEW_LABELS[review.type]}
                           </span>
-                          <div className="flex items-center gap-2">
-                            {!review.overrideEnabled && (
-                              <span className="text-xs text-gray-500">
-                                {displayDate(effDate)} at {formatTime(effTime)}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleToggleReviewPreview(review.type, effDate)}
-                              title={expandedReviewPreviews[review.type] ? 'Hide calendar preview' : "See what's on your calendar this day"}
-                              className="text-gray-400 hover:text-blue-600 transition-colors"
-                            >
-                              {expandedReviewPreviews[review.type]
-                                ? <ChevronUp className="w-3.5 h-3.5" />
-                                : <ChevronDown className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
+                          {!review.overrideEnabled && (
+                            <span className="text-xs text-gray-500">
+                              {displayDate(effDate)} at {formatTime(effTime)}
+                            </span>
+                          )}
                         </div>
 
-                        {/* Day calendar preview */}
+                        {/* Day calendar block preview */}
                         {expandedReviewPreviews[review.type] && (
-                          <div className="mb-3 rounded-md bg-white border border-gray-200 px-3 py-2.5">
+                          <div className="mb-3 rounded-md bg-white border border-gray-200 px-3 pt-2 pb-1">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                              {displayDate(effDate)}
+                            </p>
                             {!isConnected && (
-                              <p className="text-xs text-gray-500">Connect Google Calendar in Settings to preview this day&apos;s schedule.</p>
+                              <p className="text-xs text-gray-400 pb-2">Connect Google Calendar in Settings to preview.</p>
                             )}
                             {isConnected && reviewPreviewLoading[review.type] && (
-                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                              <div className="flex items-center gap-2 text-xs text-gray-500 pb-2">
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                Loading calendar for {displayDate(effDate)}…
+                                Loading…
                               </div>
                             )}
                             {isConnected && reviewPreviewError[review.type] && (
-                              <p className="text-xs text-red-600">Failed to load calendar events.</p>
+                              <p className="text-xs text-red-600 pb-2">Failed to load calendar events.</p>
                             )}
-                            {isConnected && !reviewPreviewLoading[review.type] && !reviewPreviewError[review.type] && reviewPreviewEvents[review.type] && (
-                              <div>
-                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                                  {displayDate(effDate)} — What&apos;s on your calendar
-                                </p>
-                                {reviewPreviewEvents[review.type]!.length === 0 ? (
-                                  <p className="text-xs text-green-700 font-medium">No events — calendar is clear.</p>
-                                ) : (
-                                  <div className="space-y-1">
-                                    {reviewPreviewEvents[review.type]!.map((ev) => (
-                                      <div key={ev.id} className="flex items-start gap-3 text-xs">
-                                        <span className="text-gray-400 shrink-0 w-28">
-                                          {ev.isAllDay ? 'All day' : `${ev.startTime} – ${ev.endTime}`}
-                                        </span>
-                                        <span className="text-gray-800">{ev.title}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
+                            {isConnected && !reviewPreviewLoading[review.type] && !reviewPreviewError[review.type] && reviewPreviewEvents[review.type] !== undefined && (
+                              reviewPreviewEvents[review.type]!.length === 0 && reviewMin < 0 ? (
+                                <p className="text-xs text-green-700 font-medium pb-2">No events — calendar is clear.</p>
+                              ) : (
+                                <BlockSchedule
+                                  events={reviewPreviewEvents[review.type]!}
+                                  reviewMin={reviewMin}
+                                />
+                              )
                             )}
                           </div>
                         )}
@@ -762,6 +853,20 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                             )}
                           </>
                         )}
+
+                        {/* Chevron — bottom right */}
+                        <div className="flex justify-end mt-2">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleReviewPreview(review.type, effDate)}
+                            title={expandedReviewPreviews[review.type] ? 'Hide calendar preview' : "See what's on your calendar this day"}
+                            className="text-gray-400 hover:text-blue-600 transition-colors"
+                          >
+                            {expandedReviewPreviews[review.type]
+                              ? <ChevronUp className="w-3.5 h-3.5" />
+                              : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
                       </div>
                     );
                   })}

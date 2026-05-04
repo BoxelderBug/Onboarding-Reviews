@@ -83,7 +83,7 @@ export async function exportToGoogleSheets(
     return { values: cells };
   });
 
-  const title = `Onboarding Reviews — ${new Date().toLocaleDateString('en-US', {
+  const title = `HR Comm/Sched Center — ${new Date().toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
   })}`;
 
