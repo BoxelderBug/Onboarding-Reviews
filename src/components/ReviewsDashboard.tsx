@@ -12,6 +12,7 @@ import {
   CalendarOff,
   Loader2,
   AlertTriangle,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   effectiveDate,
@@ -52,6 +53,11 @@ function buildRows(data: AppData): ReviewRow[] {
     return 0;
   });
   return rows;
+}
+
+function gcalDayUrl(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return `https://calendar.google.com/calendar/r/day/${year}/${month}/${day}`;
 }
 
 function ReviewTypeBadge({ type }: { type: ReviewType }) {
@@ -306,7 +312,18 @@ function SectionTable({
                     <ReviewTypeBadge type={row.review.type} />
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
-                    {displayDate(row.effDate)}
+                    <div className="flex items-center gap-1">
+                      {displayDate(row.effDate)}
+                      <a
+                        href={gcalDayUrl(row.effDate)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Open in Google Calendar"
+                        className="text-gray-400 hover:text-blue-600 transition-colors"
+                      >
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
                     {formatTime(row.effTime)}
