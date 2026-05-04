@@ -1,4 +1,4 @@
-import type { AppData, Employee, Holiday, Settings } from './types';
+import type { AppData, Employee, Holiday, Location, Settings } from './types';
 
 const STORAGE_KEY = 'onboarding-reviews';
 
@@ -22,6 +22,7 @@ export const DEFAULT_DATA: AppData = {
       { id: 'p4', name: 'Manager', startTime: '09:00', duration: 60 },
     ],
     managers: [],
+    locations: [],
     calendarTimeZone: 'America/Chicago',
     firstDaySchedule: [],
     secondDaySchedule: [],
@@ -44,6 +45,7 @@ export function loadData(): AppData {
           parsed.settings?.defaultDuration ?? DEFAULT_DATA.settings.defaultDuration,
         positions: parsed.settings?.positions ?? DEFAULT_DATA.settings.positions,
         managers: parsed.settings?.managers ?? [],
+        locations: (parsed.settings?.locations ?? []) as Location[],
         calendarTimeZone:
           parsed.settings?.calendarTimeZone ?? DEFAULT_DATA.settings.calendarTimeZone,
         firstDaySchedule: parsed.settings?.firstDaySchedule ?? [],

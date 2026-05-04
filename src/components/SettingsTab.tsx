@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import {
   Plus, Pencil, Trash2, Check, X, Settings2, Users, Calendar, Wifi, WifiOff,
+  MapPin, RefreshCw, Loader2,
 } from 'lucide-react';
-import type { AppData, Position, Manager, ScheduleEvent, Settings } from '@/lib/types';
+import type { AppData, Location, Position, Manager, ScheduleEvent, Settings } from '@/lib/types';
+import { fetchCalendarRooms } from '@/lib/googleCalendar';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
 
 function generateId(): string {
@@ -30,6 +32,7 @@ interface ScheduleEventForm {
   title: string;
   description: string;
   prependEmployees: boolean;
+  locationId: string;
   startTime: string;
   duration: string;
   inviteEmployee: boolean;
@@ -40,8 +43,8 @@ interface ScheduleEventForm {
 function emptyEventForm(): ScheduleEventForm {
   return {
     id: generateId(), title: '', description: '', prependEmployees: false,
-    startTime: '09:00', duration: '60', inviteEmployee: true, inviteManager: true,
-    additionalEmails: '',
+    locationId: '', startTime: '09:00', duration: '60',
+    inviteEmployee: true, inviteManager: true, additionalEmails: '',
   };
 }
 
@@ -49,6 +52,7 @@ function eventToForm(e: ScheduleEvent): ScheduleEventForm {
   return {
     id: e.id, title: e.title, description: e.description,
     prependEmployees: e.prependEmployees ?? false,
+    locationId: e.locationId ?? '',
     startTime: e.startTime, duration: String(e.duration),
     inviteEmployee: e.inviteEmployee, inviteManager: e.inviteManager,
     additionalEmails: e.additionalEmails,
@@ -58,10 +62,11 @@ function eventToForm(e: ScheduleEvent): ScheduleEventForm {
 interface ScheduleDaySectionProps {
   title: string;
   events: ScheduleEvent[];
+  locations: Location[];
   onChange: (events: ScheduleEvent[]) => void;
 }
 
-function ScheduleDaySection({ title, events, onChange }: ScheduleDaySectionProps) {
+function ScheduleDaySection({ title, events, locations, onChange }: ScheduleDaySectionProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ScheduleEventForm>(emptyEventForm());
@@ -92,6 +97,7 @@ function ScheduleDaySection({ title, events, onChange }: ScheduleDaySectionProps
       title: form.title.trim(),
       description: form.description.trim(),
       prependEmployees: form.prependEmployees,
+      locationId: form.locationId || undefined,
       startTime: form.startTime,
       duration: parseInt(form.duration, 10) || 60,
       inviteEmployee: form.inviteEmployee,
@@ -182,6 +188,23 @@ function ScheduleDaySection({ title, events, onChange }: ScheduleDaySectionProps
                 </span>
               </label>
             </div>
+
+            {/* Location */}
+            {locations.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <select
+                  value={form.locationId}
+                  onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                >
+                  <option value="">— No location —</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Time + Duration */}
             <div className="grid grid-cols-2 gap-4">
@@ -294,6 +317,12 @@ function ScheduleDaySection({ title, events, onChange }: ScheduleDaySectionProps
                     {ev.description && (
                       <div className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{ev.description}</div>
                     )}
+                    {ev.locationId && (
+                      <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
+                        <MapPin className="w-3 h-3 shrink-0" />
+                        {locations.find((l) => l.id === ev.locationId)?.name ?? ev.locationId}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{ev.startTime}</td>
                   <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{ev.duration} min</td>
@@ -342,6 +371,24 @@ function positionToForm(p: Position): PositionForm {
 }
 
 // ---------------------------------------------------------------------------
+// Location form
+// ---------------------------------------------------------------------------
+
+interface LocationForm {
+  id: string;
+  name: string;
+  resourceEmail: string;
+}
+
+function emptyLocationForm(): LocationForm {
+  return { id: generateId(), name: '', resourceEmail: '' };
+}
+
+function locationToForm(l: Location): LocationForm {
+  return { id: l.id, name: l.name, resourceEmail: l.resourceEmail ?? '' };
+}
+
+// ---------------------------------------------------------------------------
 // Manager form
 // ---------------------------------------------------------------------------
 
@@ -381,6 +428,13 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
   const [editingManagerId, setEditingManagerId] = useState<string | null>(null);
   const [managerForm, setManagerForm] = useState<ManagerForm>(emptyManagerForm());
   const [deleteManagerConfirm, setDeleteManagerConfirm] = useState<string | null>(null);
+
+  const [showAddLocation, setShowAddLocation] = useState(false);
+  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [locationForm, setLocationForm] = useState<LocationForm>(emptyLocationForm());
+  const [deleteLocationConfirm, setDeleteLocationConfirm] = useState<string | null>(null);
+  const [fetchingRooms, setFetchingRooms] = useState(false);
+  const [fetchRoomsMsg, setFetchRoomsMsg] = useState<string | null>(null);
 
   const [defaultTime, setDefaultTime] = useState(settings.defaultStartTime);
   const [defaultDuration, setDefaultDuration] = useState(String(settings.defaultDuration));
@@ -430,6 +484,63 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
   }
 
   function handleDeleteManager(id: string) { updateSettings({ managers: settings.managers.filter((m) => m.id !== id) }); setDeleteManagerConfirm(null); }
+
+  // --- Locations ---
+
+  function handleOpenAddLocation() { setLocationForm(emptyLocationForm()); setEditingLocationId(null); setShowAddLocation(true); }
+  function handleOpenEditLocation(loc: Location) { setLocationForm(locationToForm(loc)); setEditingLocationId(loc.id); setShowAddLocation(true); }
+  function handleCancelLocation() { setShowAddLocation(false); setEditingLocationId(null); setLocationForm(emptyLocationForm()); }
+
+  function handleSaveLocation() {
+    const name = locationForm.name.trim();
+    if (!name) return;
+    const location: Location = {
+      id: editingLocationId ?? locationForm.id,
+      name,
+      resourceEmail: locationForm.resourceEmail.trim() || undefined,
+    };
+    const locations = editingLocationId
+      ? settings.locations.map((l) => (l.id === editingLocationId ? location : l))
+      : [...settings.locations, location];
+    updateSettings({ locations });
+    handleCancelLocation();
+  }
+
+  function handleDeleteLocation(id: string) {
+    updateSettings({ locations: settings.locations.filter((l) => l.id !== id) });
+    setDeleteLocationConfirm(null);
+  }
+
+  async function handleFetchRooms() {
+    if (!accessToken) return;
+    setFetchingRooms(true);
+    setFetchRoomsMsg(null);
+    try {
+      const rooms = await fetchCalendarRooms(accessToken);
+      if (rooms.length === 0) {
+        setFetchRoomsMsg('No room resources found in your Google Calendar.');
+        return;
+      }
+      const existingEmails = new Set(settings.locations.map((l) => l.resourceEmail).filter(Boolean));
+      const newRooms = rooms.filter((r) => !existingEmails.has(r.resourceEmail));
+      if (newRooms.length === 0) {
+        setFetchRoomsMsg('All rooms are already in the list.');
+        return;
+      }
+      const added: Location[] = newRooms.map((r) => ({
+        id: generateId(),
+        name: r.name,
+        resourceEmail: r.resourceEmail,
+      }));
+      updateSettings({ locations: [...settings.locations, ...added] });
+      setFetchRoomsMsg(`Added ${added.length} room${added.length > 1 ? 's' : ''}.`);
+    } catch {
+      setFetchRoomsMsg('Failed to fetch rooms. Make sure Google Calendar is connected.');
+    } finally {
+      setFetchingRooms(false);
+      setTimeout(() => setFetchRoomsMsg(null), 4000);
+    }
+  }
 
   // --- Defaults ---
 
@@ -606,10 +717,149 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
         )}
       </div>
 
+      {/* Locations */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-gray-900">Meeting Room Locations</h2>
+          <div className="flex items-center gap-2">
+            {isConnected && (
+              <button
+                onClick={handleFetchRooms}
+                disabled={fetchingRooms}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
+              >
+                {fetchingRooms
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <RefreshCw className="w-4 h-4" />}
+                Import from Google Calendar
+              </button>
+            )}
+            {!showAddLocation && (
+              <button
+                onClick={handleOpenAddLocation}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+              >
+                <Plus className="w-4 h-4" />Add Location
+              </button>
+            )}
+          </div>
+        </div>
+
+        {fetchRoomsMsg && (
+          <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
+            {fetchRoomsMsg}
+          </p>
+        )}
+
+        {showAddLocation && (
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 mb-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-900">
+                {editingLocationId ? 'Edit Location' : 'New Location'}
+              </h3>
+              <button onClick={handleCancelLocation} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={locationForm.name}
+                  onChange={(e) => setLocationForm((f) => ({ ...f, name: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. Conference Room A"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Resource Email
+                  <span className="text-xs text-gray-400 font-normal ml-1">(optional — for room booking)</span>
+                </label>
+                <input
+                  type="email"
+                  value={locationForm.resourceEmail}
+                  onChange={(e) => setLocationForm((f) => ({ ...f, resourceEmail: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="c_room@resource.calendar.google.com"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-4 pt-3 border-t border-gray-100">
+              <button onClick={handleCancelLocation} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveLocation}
+                disabled={!locationForm.name.trim()}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Check className="w-4 h-4" />
+                {editingLocationId ? 'Save Changes' : 'Add Location'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {settings.locations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center bg-white border border-gray-200 rounded-lg shadow-sm">
+            <MapPin className="w-7 h-7 text-gray-300 mb-2" />
+            <p className="text-gray-500 text-sm">No locations configured.</p>
+            <p className="text-gray-400 text-xs mt-1">
+              Add manually or import from Google Calendar if connected.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  {['Name', 'Resource Email', ''].map((col) => (
+                    <th key={col} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {settings.locations.map((loc) => (
+                  <tr key={loc.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{loc.name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {loc.resourceEmail
+                        ? <span className="font-mono text-xs">{loc.resourceEmail}</span>
+                        : <span className="text-gray-400 italic text-xs">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {deleteLocationConfirm === loc.id ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="text-xs text-gray-500">Delete?</span>
+                          <button onClick={() => handleDeleteLocation(loc.id)} className="px-2 py-1 text-xs font-medium text-white bg-red-500 rounded hover:bg-red-600">Yes</button>
+                          <button onClick={() => setDeleteLocationConfirm(null)} className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded hover:bg-gray-200">No</button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => handleOpenEditLocation(loc)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Pencil className="w-4 h-4" /></button>
+                          <button onClick={() => setDeleteLocationConfirm(loc.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* First Day Schedule */}
       <ScheduleDaySection
         title="First Day Schedule"
         events={settings.firstDaySchedule}
+        locations={settings.locations}
         onChange={(firstDaySchedule) => updateSettings({ firstDaySchedule })}
       />
 
@@ -617,6 +867,7 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
       <ScheduleDaySection
         title="Second Day Schedule"
         events={settings.secondDaySchedule}
+        locations={settings.locations}
         onChange={(secondDaySchedule) => updateSettings({ secondDaySchedule })}
       />
 

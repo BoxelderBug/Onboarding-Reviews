@@ -8,6 +8,7 @@ import {
   Loader2,
   Users2,
   AlertCircle,
+  MapPin,
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { AppData, ScheduleEvent, SchedulePushRecord } from '@/lib/types';
@@ -111,6 +112,13 @@ export default function SchedulingTab({ data, onChange }: Props) {
           .forEach((e) => attendeeEmails.push(e));
       }
 
+      const eventLocation = event.locationId
+        ? settings.locations.find((l) => l.id === event.locationId)
+        : undefined;
+      if (eventLocation?.resourceEmail) {
+        attendeeEmails.push(eventLocation.resourceEmail);
+      }
+
       let description = event.description || '';
       if (event.prependEmployees && selectedEmployees.length > 0) {
         const names = selectedEmployees
@@ -129,7 +137,8 @@ export default function SchedulingTab({ data, onChange }: Props) {
         event.duration,
         settings.calendarTimeZone,
         attendeeEmails,
-        description || undefined
+        description || undefined,
+        eventLocation?.name,
       );
 
       const record: SchedulePushRecord = {
@@ -211,6 +220,9 @@ export default function SchedulingTab({ data, onChange }: Props) {
     const isPushing = pushing[key];
     const isUnscheduling = unscheduling[key];
     const error = errors[key];
+    const eventLocation = event.locationId
+      ? settings.locations.find((l) => l.id === event.locationId)
+      : undefined;
 
     const previewEmails: string[] = [];
     if (event.inviteEmployee) {
@@ -242,6 +254,12 @@ export default function SchedulingTab({ data, onChange }: Props) {
           {event.description && (
             <div className="text-xs text-gray-500 mt-0.5 truncate max-w-xs">
               {event.description}
+            </div>
+          )}
+          {eventLocation && (
+            <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
+              <MapPin className="w-3 h-3 shrink-0" />
+              {eventLocation.name}
             </div>
           )}
         </td>

@@ -80,7 +80,8 @@ export async function createCalendarEvent(
   durationMinutes: number,
   timeZone: string,
   attendeeEmails: string[],
-  description?: string
+  description?: string,
+  location?: string
 ): Promise<string> {
   const endTime = addMinutes(startTime, durationMinutes);
   const event: Record<string, unknown> = {
@@ -90,6 +91,7 @@ export async function createCalendarEvent(
     attendees: attendeeEmails.filter(Boolean).map((email) => ({ email })),
   };
   if (description) event.description = description;
+  if (location) event.location = location;
 
   const res = await fetch(
     'https://www.googleapis.com/calendar/v3/calendars/primary/events',
@@ -106,4 +108,23 @@ export async function createCalendarEvent(
   if (!res.ok) throw new Error(`createEvent request failed: ${res.status}`);
   const data = await res.json();
   return data.id as string;
+}
+
+export interface CalendarRoom {
+  id: string;
+  name: string;
+  resourceEmail: string;
+}
+
+export async function fetchCalendarRooms(accessToken: string): Promise<CalendarRoom[]> {
+  const res = await fetch(
+    'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250',
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) throw new Error(`calendarList failed: ${res.status}`);
+  const data = await res.json();
+  const items: Array<{ id: string; summary: string }> = data.items ?? [];
+  return items
+    .filter((item) => item.id.endsWith('@resource.calendar.google.com'))
+    .map((item) => ({ id: item.id, name: item.summary, resourceEmail: item.id }));
 }

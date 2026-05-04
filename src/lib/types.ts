@@ -10,11 +10,18 @@ export interface Review {
   gcalEventId?: string;
 }
 
+export interface Location {
+  id: string;
+  name: string;
+  resourceEmail?: string; // Google Workspace room resource email
+}
+
 export interface ScheduleEvent {
   id: string;
   title: string;
   description: string;
   prependEmployees?: boolean;
+  locationId?: string;
   startTime: string; // HH:MM
   duration: number; // minutes
   inviteEmployee: boolean;
@@ -67,6 +74,7 @@ export interface Settings {
   defaultDuration: number; // minutes
   positions: Position[];
   managers: Manager[];
+  locations: Location[];
   calendarTimeZone: string;
   firstDaySchedule: ScheduleEvent[];
   secondDaySchedule: ScheduleEvent[];
