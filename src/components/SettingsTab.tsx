@@ -417,7 +417,7 @@ interface SettingsTabProps {
 
 export default function SettingsTab({ data, onChange }: SettingsTabProps) {
   const settings = data.settings;
-  const { isReady, isConnected, connect, disconnect } = useGoogleCalendar();
+  const { isReady, isConnected, accessToken, connect, disconnect } = useGoogleCalendar();
 
   const [showAddPosition, setShowAddPosition] = useState(false);
   const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
