@@ -13,6 +13,21 @@ function generateId(): string {
   return `id_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const CONCURRENT_PAIRS: { key: string; a: ReviewType; b: ReviewType }[] = [
+  { key: '30-30',   a: 30,  b: 30  },
+  { key: '30-60',   a: 30,  b: 60  },
+  { key: '30-180',  a: 30,  b: 180 },
+  { key: '60-60',   a: 60,  b: 60  },
+  { key: '60-180',  a: 60,  b: 180 },
+  { key: '180-180', a: 180, b: 180 },
+];
+
+const REVIEW_BADGE: Record<ReviewType, string> = {
+  30: 'bg-blue-100 text-blue-700',
+  60: 'bg-orange-100 text-orange-700',
+  180: 'bg-purple-100 text-purple-700',
+};
+
 const TIMEZONES = [
   { value: 'America/New_York', label: 'Eastern (America/New_York)' },
   { value: 'America/Chicago', label: 'Central (America/Chicago)' },
@@ -854,6 +869,40 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
             <Check className="w-4 h-4" />Save
           </button>
           {reviewEmailsSaved && <span className="text-sm text-green-600 font-medium">Saved!</span>}
+        </div>
+      </div>
+
+      {/* Concurrent Review Scheduling */}
+      <div>
+        <h2 className="text-base font-semibold text-gray-900 mb-1">Concurrent Review Scheduling</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Check the pairs that can intentionally overlap. When both reviews are already on the calendar at the same time, the conflict warning is suppressed for those combinations.
+        </p>
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3">
+          {CONCURRENT_PAIRS.map(({ key, a, b }) => {
+            const pairs = settings.concurrentReviewPairs ?? [];
+            const checked = pairs.includes(key);
+            return (
+              <label key={key} className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    const updated = checked
+                      ? pairs.filter((k) => k !== key)
+                      : [...pairs, key];
+                    updateSettings({ concurrentReviewPairs: updated });
+                  }}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700 flex items-center gap-1">
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold ${REVIEW_BADGE[a]}`}>{a}-Day</span>
+                  <span className="text-gray-400">+</span>
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold ${REVIEW_BADGE[b]}`}>{b}-Day</span>
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
 

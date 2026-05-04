@@ -55,6 +55,15 @@ function buildRows(data: AppData): ReviewRow[] {
   return rows;
 }
 
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function pairKey(a: ReviewType, b: ReviewType): string {
+  return [a, b].sort((x, y) => x - y).join('-');
+}
+
 function gcalDayUrl(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number);
   return `https://calendar.google.com/calendar/r/day/${year}/${month}/${day}`;
@@ -107,21 +116,25 @@ type PushState = 'idle' | 'pushing' | 'synced' | 'error';
 
 interface CalendarCellProps {
   row: ReviewRow;
+  allRows: ReviewRow[];
   positionDurationMinutes: number;
   timeZone: string;
   managerEmail?: string;
   reviewTemplate?: ReviewTemplate;
   extraEmails: string[];
+  concurrentPairs: string[];
   onUpdateReview: (employeeId: string, review: Review) => void;
 }
 
 function CalendarCell({
   row,
+  allRows,
   positionDurationMinutes,
   timeZone,
   managerEmail,
   reviewTemplate,
   extraEmails,
+  concurrentPairs,
   onUpdateReview,
 }: CalendarCellProps) {
   const { isConnected, accessToken } = useGoogleCalendar();
@@ -143,7 +156,22 @@ function CalendarCell({
         positionDurationMinutes,
         timeZone
       );
-      if (busy) setConflict(true);
+      if (busy) {
+        const curMin = timeToMinutes(row.effTime);
+        const overlapping = allRows.filter(
+          (r) =>
+            r.employee.id !== row.employee.id &&
+            r.effDate === row.effDate &&
+            r.review.gcalEventId &&
+            Math.abs(timeToMinutes(r.effTime) - curMin) < positionDurationMinutes
+        );
+        const conflictIsAllowed =
+          overlapping.length > 0 &&
+          overlapping.every((r) =>
+            concurrentPairs.includes(pairKey(row.review.type, r.review.type))
+          );
+        if (!conflictIsAllowed) setConflict(true);
+      }
 
       const fullName = `${row.employee.lastName}, ${row.employee.firstName}`;
       const rawTitle = reviewTemplate?.title ||
@@ -175,7 +203,7 @@ function CalendarCell({
     } catch {
       setPushState('error');
     }
-  }, [accessToken, row, positionDurationMinutes, timeZone, managerEmail, onUpdateReview]);
+  }, [accessToken, row, allRows, positionDurationMinutes, timeZone, managerEmail, concurrentPairs, onUpdateReview]);
 
   const handleUnschedule = useCallback(async () => {
     if (!accessToken || !row.review.gcalEventId) return;
@@ -254,6 +282,7 @@ const COLS = ['Employee', 'Position', 'Manager', 'Review', 'Date', 'Time', 'Flag
 
 interface SectionTableProps {
   rows: ReviewRow[];
+  allRows: ReviewRow[];
   title: string;
   headerClass: string;
   positionMap: Map<string, string>;
@@ -262,12 +291,14 @@ interface SectionTableProps {
   managerEmailMap: Map<string, string>;
   durationMap: Map<string, number>;
   reviewEmailsRecord: Record<ReviewType, string>;
+  concurrentPairs: string[];
   timeZone: string;
   onUpdateReview: (employeeId: string, review: Review) => void;
 }
 
 function SectionTable({
   rows,
+  allRows,
   title,
   headerClass,
   positionMap,
@@ -276,6 +307,7 @@ function SectionTable({
   managerEmailMap,
   durationMap,
   reviewEmailsRecord,
+  concurrentPairs,
   timeZone,
   onUpdateReview,
 }: SectionTableProps) {
@@ -365,11 +397,13 @@ function SectionTable({
                   <td className="px-4 py-3 whitespace-nowrap">
                     <CalendarCell
                       row={row}
+                      allRows={allRows}
                       positionDurationMinutes={duration}
                       timeZone={timeZone}
                       managerEmail={mgrEmail}
                       reviewTemplate={reviewTemplate}
                       extraEmails={extraEmails}
+                      concurrentPairs={concurrentPairs}
                       onUpdateReview={onUpdateReview}
                     />
                   </td>
@@ -397,6 +431,7 @@ export default function ReviewsDashboard({ data, onUpdateReview }: ReviewsDashbo
   const managerMap = new Map(data.settings.managers.map((m) => [m.id, m.name]));
   const managerEmailMap = new Map(data.settings.managers.map((m) => [m.id, m.email]));
   const reviewEmailsRecord = data.settings.reviewEmails ?? ({ 30: '', 60: '', 180: '' } as Record<ReviewType, string>);
+  const concurrentPairs = data.settings.concurrentReviewPairs ?? [];
   const timeZone = data.settings.calendarTimeZone;
 
   const overdue = rows.filter((r) => r.status === 'overdue');
@@ -415,7 +450,7 @@ export default function ReviewsDashboard({ data, onUpdateReview }: ReviewsDashbo
     );
   }
 
-  const tableProps = { positionMap, positionObjectMap, managerMap, managerEmailMap, durationMap, reviewEmailsRecord, timeZone, onUpdateReview };
+  const tableProps = { allRows: rows, positionMap, positionObjectMap, managerMap, managerEmailMap, durationMap, reviewEmailsRecord, concurrentPairs, timeZone, onUpdateReview };
 
   return (
     <div>

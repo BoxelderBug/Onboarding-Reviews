@@ -87,6 +87,7 @@ export interface Settings {
   managers: Manager[];
   locations: Location[];
   reviewEmails: Record<ReviewType, string>; // comma-separated per review type
+  concurrentReviewPairs: string[]; // e.g. ["30-60"] — pairs allowed to overlap without conflict warning
   calendarTimeZone: string;
   firstDaySchedule: ScheduleEvent[];
   secondDaySchedule: ScheduleEvent[];

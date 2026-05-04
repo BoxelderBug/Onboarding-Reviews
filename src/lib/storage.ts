@@ -24,6 +24,7 @@ export const DEFAULT_DATA: AppData = {
     managers: [],
     locations: [],
     reviewEmails: { 30: '', 60: '', 180: '' },
+    concurrentReviewPairs: [],
     calendarTimeZone: 'America/Chicago',
     firstDaySchedule: [],
     secondDaySchedule: [],
@@ -48,6 +49,7 @@ export function loadData(): AppData {
         managers: parsed.settings?.managers ?? [],
         locations: (parsed.settings?.locations ?? []) as Location[],
         reviewEmails: parsed.settings?.reviewEmails ?? { 30: '', 60: '', 180: '' },
+        concurrentReviewPairs: parsed.settings?.concurrentReviewPairs ?? [],
         calendarTimeZone:
           parsed.settings?.calendarTimeZone ?? DEFAULT_DATA.settings.calendarTimeZone,
         firstDaySchedule: parsed.settings?.firstDaySchedule ?? [],
