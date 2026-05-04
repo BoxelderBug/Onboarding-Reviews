@@ -167,7 +167,7 @@ function CalendarCell({
       <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
         <CalendarCheck className="w-4 h-4" />
         {conflict && (
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title="Conflict detected at this time" />
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
         )}
         Synced
       </span>
