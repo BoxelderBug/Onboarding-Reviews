@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import {
   Plus, Pencil, Trash2, Check, X, Settings2, Users, Calendar, Wifi, WifiOff,
-  MapPin, RefreshCw, Loader2,
+  MapPin, RefreshCw, Loader2, ChevronDown, ChevronRight,
 } from 'lucide-react';
-import type { AppData, Location, Position, Manager, ScheduleEvent, Settings } from '@/lib/types';
+import type { AppData, Location, Position, Manager, ReviewType, ScheduleEvent, Settings } from '@/lib/types';
 import { fetchCalendarRooms } from '@/lib/googleCalendar';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
 
@@ -377,14 +377,28 @@ interface PositionForm {
   name: string;
   startTime: string;
   duration: string;
+  t30title: string; t30desc: string;
+  t60title: string; t60desc: string;
+  t180title: string; t180desc: string;
 }
 
 function emptyPositionForm(): PositionForm {
-  return { id: generateId(), name: '', startTime: '09:00', duration: '30' };
+  return {
+    id: generateId(), name: '', startTime: '09:00', duration: '30',
+    t30title: '', t30desc: '', t60title: '', t60desc: '', t180title: '', t180desc: '',
+  };
 }
 
 function positionToForm(p: Position): PositionForm {
-  return { id: p.id, name: p.name, startTime: p.startTime, duration: String(p.duration) };
+  return {
+    id: p.id, name: p.name, startTime: p.startTime, duration: String(p.duration),
+    t30title: p.reviewTemplates?.[30]?.title ?? '',
+    t30desc:  p.reviewTemplates?.[30]?.description ?? '',
+    t60title: p.reviewTemplates?.[60]?.title ?? '',
+    t60desc:  p.reviewTemplates?.[60]?.description ?? '',
+    t180title: p.reviewTemplates?.[180]?.title ?? '',
+    t180desc:  p.reviewTemplates?.[180]?.description ?? '',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -440,6 +454,12 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
   const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
   const [positionForm, setPositionForm] = useState<PositionForm>(emptyPositionForm());
   const [deletePositionConfirm, setDeletePositionConfirm] = useState<string | null>(null);
+  const [showPositionTemplates, setShowPositionTemplates] = useState(false);
+
+  const [email30, setEmail30] = useState(settings.reviewEmails?.[30] ?? '');
+  const [email60, setEmail60] = useState(settings.reviewEmails?.[60] ?? '');
+  const [email180, setEmail180] = useState(settings.reviewEmails?.[180] ?? '');
+  const [reviewEmailsSaved, setReviewEmailsSaved] = useState(false);
 
   const [showAddManager, setShowAddManager] = useState(false);
   const [editingManagerId, setEditingManagerId] = useState<string | null>(null);
@@ -466,14 +486,31 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
 
   // --- Positions ---
 
-  function handleOpenAddPosition() { setPositionForm(emptyPositionForm()); setEditingPositionId(null); setShowAddPosition(true); }
-  function handleOpenEditPosition(pos: Position) { setPositionForm(positionToForm(pos)); setEditingPositionId(pos.id); setShowAddPosition(true); }
-  function handleCancelPosition() { setShowAddPosition(false); setEditingPositionId(null); setPositionForm(emptyPositionForm()); }
+  function handleOpenAddPosition() { setPositionForm(emptyPositionForm()); setEditingPositionId(null); setShowPositionTemplates(false); setShowAddPosition(true); }
+  function handleOpenEditPosition(pos: Position) { setPositionForm(positionToForm(pos)); setEditingPositionId(pos.id); setShowPositionTemplates(!!pos.reviewTemplates); setShowAddPosition(true); }
+  function handleCancelPosition() { setShowAddPosition(false); setEditingPositionId(null); setPositionForm(emptyPositionForm()); setShowPositionTemplates(false); }
+
+  function handleSaveReviewEmails() {
+    updateSettings({ reviewEmails: { 30: email30.trim(), 60: email60.trim(), 180: email180.trim() } });
+    setReviewEmailsSaved(true);
+    setTimeout(() => setReviewEmailsSaved(false), 2000);
+  }
 
   function handleSavePosition() {
     const name = positionForm.name.trim();
     if (!name || !positionForm.startTime) return;
-    const position: Position = { id: editingPositionId ?? positionForm.id, name, startTime: positionForm.startTime, duration: parseInt(positionForm.duration, 10) || 30 };
+    const rt: Position['reviewTemplates'] = {};
+    if (positionForm.t30title || positionForm.t30desc)
+      rt[30] = { title: positionForm.t30title.trim(), description: positionForm.t30desc.trim() };
+    if (positionForm.t60title || positionForm.t60desc)
+      rt[60] = { title: positionForm.t60title.trim(), description: positionForm.t60desc.trim() };
+    if (positionForm.t180title || positionForm.t180desc)
+      rt[180] = { title: positionForm.t180title.trim(), description: positionForm.t180desc.trim() };
+    const position: Position = {
+      id: editingPositionId ?? positionForm.id, name,
+      startTime: positionForm.startTime, duration: parseInt(positionForm.duration, 10) || 30,
+      reviewTemplates: Object.keys(rt).length > 0 ? rt : undefined,
+    };
     const positions = editingPositionId
       ? settings.positions.map((p) => (p.id === editingPositionId ? position : p))
       : [...settings.positions, position];
@@ -614,7 +651,57 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
                 <input type="number" min="1" max="480" value={positionForm.duration} onChange={(e) => setPositionForm((f) => ({ ...f, duration: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
-            <div className="flex justify-end gap-3 mt-4 pt-3 border-t border-gray-100">
+
+            {/* Review Event Templates (collapsible) */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowPositionTemplates((v) => !v)}
+                className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-sm font-medium text-gray-700 transition-colors"
+              >
+                <span>Review Event Templates <span className="text-xs text-gray-400 font-normal ml-1">(optional — custom title/description per review type)</span></span>
+                {showPositionTemplates ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+              {showPositionTemplates && (
+                <div className="p-4 space-y-4 bg-white">
+                  <p className="text-xs text-gray-400">Use <code className="bg-gray-100 px-1 rounded">[employee]</code> for full name or <code className="bg-gray-100 px-1 rounded">[employeefirst]</code> for first name. Leave blank to use the default title.</p>
+                  {([30, 60, 180] as ReviewType[]).map((type) => {
+                    const titleKey = `t${type}title` as keyof PositionForm;
+                    const descKey = `t${type}desc` as keyof PositionForm;
+                    const colors: Record<ReviewType, string> = { 30: 'text-blue-700', 60: 'text-orange-700', 180: 'text-purple-700' };
+                    return (
+                      <div key={type} className="space-y-2">
+                        <p className={`text-xs font-semibold ${colors[type]}`}>{type}-Day Review</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                            <input
+                              type="text"
+                              value={positionForm[titleKey] as string}
+                              onChange={(e) => setPositionForm((f) => ({ ...f, [titleKey]: e.target.value }))}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder={`e.g. ${type}-Day Review: [employee]`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                            <input
+                              type="text"
+                              value={positionForm[descKey] as string}
+                              onChange={(e) => setPositionForm((f) => ({ ...f, [descKey]: e.target.value }))}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Optional agenda or notes"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
               <button onClick={handleCancelPosition} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
               <button onClick={handleSavePosition} disabled={!positionForm.name.trim()} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                 <Check className="w-4 h-4" />{editingPositionId ? 'Save Changes' : 'Add Position'}
@@ -732,6 +819,42 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
             </table>
           </div>
         )}
+      </div>
+
+      {/* Review Meeting Invites */}
+      <div>
+        <h2 className="text-base font-semibold text-gray-900 mb-1">Review Meeting Invites</h2>
+        <p className="text-sm text-gray-500 mb-4">Additional emails to include on each review type. The employee and their manager are always added automatically.</p>
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-100">
+          {([30, 60, 180] as ReviewType[]).map((type, i) => {
+            const val = i === 0 ? email30 : i === 1 ? email60 : email180;
+            const setter = i === 0 ? setEmail30 : i === 1 ? setEmail60 : setEmail180;
+            const colors: Record<ReviewType, string> = { 30: 'bg-blue-100 text-blue-700', 60: 'bg-orange-100 text-orange-700', 180: 'bg-purple-100 text-purple-700' };
+            return (
+              <div key={type} className="flex items-center gap-4 px-4 py-3">
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 ${colors[type]}`}>
+                  {type}-Day
+                </span>
+                <input
+                  type="text"
+                  value={val}
+                  onChange={(e) => setter(e.target.value)}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="email1@company.com, email2@company.com"
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex items-center gap-3">
+          <button
+            onClick={handleSaveReviewEmails}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Check className="w-4 h-4" />Save
+          </button>
+          {reviewEmailsSaved && <span className="text-sm text-green-600 font-medium">Saved!</span>}
+        </div>
       </div>
 
       {/* Locations */}

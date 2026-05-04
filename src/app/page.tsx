@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ClipboardList, Users, CalendarDays, Settings2, ListChecks } from 'lucide-react';
+import { ClipboardList, Users, CalendarDays, Settings2, ListChecks, BookOpen } from 'lucide-react';
 import clsx from 'clsx';
 import { loadData, saveData, DEFAULT_DATA } from '@/lib/storage';
 import { buildReviews } from '@/lib/dateUtils';
@@ -13,8 +13,9 @@ import EmployeesTab from '@/components/EmployeesTab';
 import HolidaysTab from '@/components/HolidaysTab';
 import SettingsTab from '@/components/SettingsTab';
 import SchedulingTab from '@/components/SchedulingTab';
+import ReferenceTab from '@/components/ReferenceTab';
 
-type Tab = 'reviews' | 'employees' | 'scheduling' | 'holidays' | 'settings';
+type Tab = 'reviews' | 'employees' | 'scheduling' | 'holidays' | 'settings' | 'reference';
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'reviews', label: 'Reviews', Icon: ClipboardList },
@@ -22,6 +23,7 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'scheduling', label: 'Scheduling', Icon: ListChecks },
   { id: 'holidays', label: 'Holidays', Icon: CalendarDays },
   { id: 'settings', label: 'Settings', Icon: Settings2 },
+  { id: 'reference', label: 'Reference', Icon: BookOpen },
 ];
 
 function recalculateAll(data: AppData): AppData {
@@ -180,6 +182,7 @@ export default function Home() {
         {activeTab === 'settings' && (
           <SettingsTab data={data} onChange={handleHolidaysOrSettingsChange} />
         )}
+        {activeTab === 'reference' && <ReferenceTab />}
       </main>
     </div>
   );

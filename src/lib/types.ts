@@ -57,11 +57,21 @@ export interface Holiday {
   recurring: boolean;
 }
 
+export interface ReviewTemplate {
+  title: string;
+  description: string;
+}
+
 export interface Position {
   id: string;
   name: string;
   startTime: string; // HH:MM
   duration: number; // minutes
+  reviewTemplates?: {
+    30?: ReviewTemplate;
+    60?: ReviewTemplate;
+    180?: ReviewTemplate;
+  };
 }
 
 export interface Manager {
@@ -76,6 +86,7 @@ export interface Settings {
   positions: Position[];
   managers: Manager[];
   locations: Location[];
+  reviewEmails: Record<ReviewType, string>; // comma-separated per review type
   calendarTimeZone: string;
   firstDaySchedule: ScheduleEvent[];
   secondDaySchedule: ScheduleEvent[];

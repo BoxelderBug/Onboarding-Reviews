@@ -24,7 +24,7 @@ import {
 } from '@/lib/dateUtils';
 import { checkBusy, createCalendarEvent, deleteCalendarEvent } from '@/lib/googleCalendar';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
-import type { AppData, Employee, Review, ReviewType } from '@/lib/types';
+import type { AppData, Employee, Position, Review, ReviewTemplate, ReviewType } from '@/lib/types';
 
 interface ReviewRow {
   employee: Employee;
@@ -110,6 +110,8 @@ interface CalendarCellProps {
   positionDurationMinutes: number;
   timeZone: string;
   managerEmail?: string;
+  reviewTemplate?: ReviewTemplate;
+  extraEmails: string[];
   onUpdateReview: (employeeId: string, review: Review) => void;
 }
 
@@ -118,6 +120,8 @@ function CalendarCell({
   positionDurationMinutes,
   timeZone,
   managerEmail,
+  reviewTemplate,
+  extraEmails,
   onUpdateReview,
 }: CalendarCellProps) {
   const { isConnected, accessToken } = useGoogleCalendar();
@@ -141,8 +145,19 @@ function CalendarCell({
       );
       if (busy) setConflict(true);
 
-      const summary = `${row.review.type}-Day Review: ${row.employee.lastName}, ${row.employee.firstName}`;
-      const attendees = [row.employee.email, managerEmail ?? ''].filter(Boolean);
+      const fullName = `${row.employee.lastName}, ${row.employee.firstName}`;
+      const rawTitle = reviewTemplate?.title ||
+        `${row.review.type}-Day Review: ${row.employee.lastName}, ${row.employee.firstName}`;
+      const summary = rawTitle
+        .replace(/\[employee\]/gi, fullName)
+        .replace(/\[employeefirst\]/gi, row.employee.firstName);
+      const description = reviewTemplate?.description
+        ? reviewTemplate.description
+            .replace(/\[employee\]/gi, fullName)
+            .replace(/\[employeefirst\]/gi, row.employee.firstName)
+        : undefined;
+
+      const attendees = [row.employee.email, managerEmail ?? '', ...extraEmails].filter(Boolean);
 
       const eventId = await createCalendarEvent(
         accessToken,
@@ -151,7 +166,8 @@ function CalendarCell({
         row.effTime,
         positionDurationMinutes,
         timeZone,
-        attendees
+        attendees,
+        description
       );
 
       onUpdateReview(row.employee.id, { ...row.review, gcalEventId: eventId });
@@ -241,9 +257,11 @@ interface SectionTableProps {
   title: string;
   headerClass: string;
   positionMap: Map<string, string>;
+  positionObjectMap: Map<string, Position>;
   managerMap: Map<string, string>;
   managerEmailMap: Map<string, string>;
   durationMap: Map<string, number>;
+  reviewEmailsRecord: Record<ReviewType, string>;
   timeZone: string;
   onUpdateReview: (employeeId: string, review: Review) => void;
 }
@@ -253,9 +271,11 @@ function SectionTable({
   title,
   headerClass,
   positionMap,
+  positionObjectMap,
   managerMap,
   managerEmailMap,
   durationMap,
+  reviewEmailsRecord,
   timeZone,
   onUpdateReview,
 }: SectionTableProps) {
@@ -291,6 +311,10 @@ function SectionTable({
                 ? managerEmailMap.get(row.employee.managerId)
                 : undefined;
               const duration = durationMap.get(row.employee.positionId) ?? 30;
+              const position = positionObjectMap.get(row.employee.positionId);
+              const reviewTemplate = position?.reviewTemplates?.[row.review.type];
+              const extraEmails = (reviewEmailsRecord[row.review.type] ?? '')
+                .split(',').map((s) => s.trim()).filter(Boolean);
 
               return (
                 <tr
@@ -344,6 +368,8 @@ function SectionTable({
                       positionDurationMinutes={duration}
                       timeZone={timeZone}
                       managerEmail={mgrEmail}
+                      reviewTemplate={reviewTemplate}
+                      extraEmails={extraEmails}
                       onUpdateReview={onUpdateReview}
                     />
                   </td>
@@ -366,9 +392,11 @@ export default function ReviewsDashboard({ data, onUpdateReview }: ReviewsDashbo
   const { isConnected } = useGoogleCalendar();
   const rows = buildRows(data);
   const positionMap = new Map(data.settings.positions.map((p) => [p.id, p.name]));
+  const positionObjectMap = new Map(data.settings.positions.map((p) => [p.id, p]));
   const durationMap = new Map(data.settings.positions.map((p) => [p.id, p.duration]));
   const managerMap = new Map(data.settings.managers.map((m) => [m.id, m.name]));
   const managerEmailMap = new Map(data.settings.managers.map((m) => [m.id, m.email]));
+  const reviewEmailsRecord = data.settings.reviewEmails ?? ({ 30: '', 60: '', 180: '' } as Record<ReviewType, string>);
   const timeZone = data.settings.calendarTimeZone;
 
   const overdue = rows.filter((r) => r.status === 'overdue');
@@ -387,7 +415,7 @@ export default function ReviewsDashboard({ data, onUpdateReview }: ReviewsDashbo
     );
   }
 
-  const tableProps = { positionMap, managerMap, managerEmailMap, durationMap, timeZone, onUpdateReview };
+  const tableProps = { positionMap, positionObjectMap, managerMap, managerEmailMap, durationMap, reviewEmailsRecord, timeZone, onUpdateReview };
 
   return (
     <div>
