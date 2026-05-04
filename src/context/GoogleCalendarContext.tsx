@@ -60,7 +60,7 @@ export function GoogleCalendarProvider({ children }: { children: React.ReactNode
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tokenClientRef.current = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        scope: 'https://www.googleapis.com/auth/calendar.events',
+        scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly',
         callback: (response: { access_token?: string }) => {
           if (response.access_token) {
             setAccessToken(response.access_token);
