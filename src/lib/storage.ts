@@ -21,6 +21,8 @@ export const DEFAULT_DATA: AppData = {
       { id: 'p3', name: 'Sales', startTime: '09:00', duration: 30 },
       { id: 'p4', name: 'Manager', startTime: '09:00', duration: 60 },
     ],
+    managers: [],
+    calendarTimeZone: 'America/Chicago',
   },
 };
 
@@ -30,7 +32,6 @@ export function loadData(): AppData {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_DATA;
     const parsed = JSON.parse(raw) as AppData;
-    // Merge defaults for any missing fields
     return {
       employees: parsed.employees ?? [],
       holidays: parsed.holidays ?? DEFAULT_DATA.holidays,
@@ -40,6 +41,9 @@ export function loadData(): AppData {
         defaultDuration:
           parsed.settings?.defaultDuration ?? DEFAULT_DATA.settings.defaultDuration,
         positions: parsed.settings?.positions ?? DEFAULT_DATA.settings.positions,
+        managers: parsed.settings?.managers ?? [],
+        calendarTimeZone:
+          parsed.settings?.calendarTimeZone ?? DEFAULT_DATA.settings.calendarTimeZone,
       },
     };
   } catch {

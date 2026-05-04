@@ -7,6 +7,7 @@ export interface Review {
   overrideEnabled: boolean;
   overrideDate: string; // YYYY-MM-DD
   overrideTime: string; // HH:MM
+  gcalEventId?: string; // Google Calendar event ID once pushed
 }
 
 export interface Employee {
@@ -14,6 +15,7 @@ export interface Employee {
   lastName: string;
   firstName: string;
   positionId: string;
+  managerId?: string;
   outOfState: boolean;
   email: string;
   startDate: string; // YYYY-MM-DD
@@ -34,10 +36,18 @@ export interface Position {
   duration: number; // minutes
 }
 
+export interface Manager {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface Settings {
   defaultStartTime: string; // HH:MM
   defaultDuration: number; // minutes
   positions: Position[];
+  managers: Manager[];
+  calendarTimeZone: string; // IANA timezone, e.g. "America/Chicago"
 }
 
 export interface AppData {

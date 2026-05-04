@@ -43,6 +43,7 @@ interface FormState {
   lastName: string;
   firstName: string;
   positionId: string;
+  managerId: string;
   outOfState: boolean;
   email: string;
   startDate: string;
@@ -55,6 +56,7 @@ function buildEmptyForm(): FormState {
     lastName: '',
     firstName: '',
     positionId: '',
+    managerId: '',
     outOfState: false,
     email: '',
     startDate: '',
@@ -68,6 +70,7 @@ function employeeToForm(emp: Employee): FormState {
     lastName: emp.lastName,
     firstName: emp.firstName,
     positionId: emp.positionId,
+    managerId: emp.managerId ?? '',
     outOfState: emp.outOfState,
     email: emp.email,
     startDate: emp.startDate,
@@ -81,6 +84,7 @@ function formToEmployee(form: FormState): Employee {
     lastName: form.lastName,
     firstName: form.firstName,
     positionId: form.positionId,
+    managerId: form.managerId || undefined,
     outOfState: form.outOfState,
     email: form.email,
     startDate: form.startDate,
@@ -99,7 +103,6 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
   const [form, setForm] = useState<FormState>(buildEmptyForm());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  // Recalculate reviews when startDate or positionId changes
   const recalcReviews = useCallback(
     (startDate: string, positionId: string, existingReviews: Review[]): Review[] => {
       if (!startDate) return existingReviews;
@@ -115,7 +118,6 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
     [data.settings, data.holidays]
   );
 
-  // When startDate or positionId in form changes, recalculate non-overridden reviews
   useEffect(() => {
     if (!showForm) return;
     if (!form.startDate) return;
@@ -148,7 +150,6 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
     setForm((prev) => {
       const updated = { ...prev, [field]: value };
 
-      // Auto-email logic
       if (field === 'firstName' || field === 'lastName') {
         const fn = field === 'firstName' ? (value as string) : prev.firstName;
         const ln = field === 'lastName' ? (value as string) : prev.lastName;
@@ -205,6 +206,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
   }
 
   const positionMap = new Map(data.settings.positions.map((p) => [p.id, p.name]));
+  const managerMap = new Map(data.settings.managers.map((m) => [m.id, m.name]));
 
   const sortedEmployees = [...data.employees].sort((a, b) => {
     const la = a.lastName.toLowerCase();
@@ -240,10 +242,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
             <h2 className="text-base font-semibold text-gray-900">
               {editingId ? 'Edit Employee' : 'Add Employee'}
             </h2>
-            <button
-              onClick={handleCancel}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-            >
+            <button onClick={handleCancel} className="text-gray-400 hover:text-gray-600 transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -277,23 +276,38 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
               </div>
             </div>
 
-            {/* Position */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Position
-              </label>
-              <select
-                value={form.positionId}
-                onChange={(e) => handleFieldChange('positionId', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-              >
-                <option value="">— Select position —</option>
-                {data.settings.positions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+            {/* Position + Manager */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
+                <select
+                  value={form.positionId}
+                  onChange={(e) => handleFieldChange('positionId', e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                >
+                  <option value="">— Select position —</option>
+                  {data.settings.positions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Manager</label>
+                <select
+                  value={form.managerId}
+                  onChange={(e) => handleFieldChange('managerId', e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                >
+                  <option value="">— Select manager —</option>
+                  {data.settings.managers.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Out-of-state */}
@@ -312,9 +326,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
 
             {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
               <input
                 type="email"
                 value={form.email}
@@ -322,9 +334,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="johnsmith@adamspestcontrol.com"
               />
-              <p className="text-xs text-gray-400 mt-1">
-                Auto-populated from name. Edit to override.
-              </p>
+              <p className="text-xs text-gray-400 mt-1">Auto-populated from name. Edit to override.</p>
             </div>
 
             {/* Start date */}
@@ -343,25 +353,16 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
             {/* Review dates */}
             {form.startDate && form.reviews.length > 0 && (
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">
-                  Review Dates
-                </h3>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Review Dates</h3>
                 <div className="space-y-4">
                   {(form.reviews as Review[]).map((review) => {
                     const calcDate = review.calculatedDate;
                     const calcTime = review.calculatedTime;
-                    const effDate = review.overrideEnabled
-                      ? review.overrideDate
-                      : calcDate;
-                    const effTime = review.overrideEnabled
-                      ? review.overrideTime
-                      : calcTime;
+                    const effDate = review.overrideEnabled ? review.overrideDate : calcDate;
+                    const effTime = review.overrideEnabled ? review.overrideTime : calcTime;
 
                     return (
-                      <div
-                        key={review.type}
-                        className="border border-gray-100 rounded-lg p-4 bg-gray-50"
-                      >
+                      <div key={review.type} className="border border-gray-100 rounded-lg p-4 bg-gray-50">
                         <div className="flex items-center justify-between mb-2">
                           <span
                             className={clsx(
@@ -383,15 +384,10 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                             id={`override-${review.type}`}
                             type="checkbox"
                             checked={review.overrideEnabled}
-                            onChange={(e) =>
-                              handleOverrideToggle(review.type, e.target.checked)
-                            }
+                            onChange={(e) => handleOverrideToggle(review.type, e.target.checked)}
                             className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                           />
-                          <label
-                            htmlFor={`override-${review.type}`}
-                            className="text-xs font-medium text-gray-600"
-                          >
+                          <label htmlFor={`override-${review.type}`} className="text-xs font-medium text-gray-600">
                             Manual Override
                           </label>
                         </div>
@@ -399,28 +395,20 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                         {review.overrideEnabled && (
                           <div className="grid grid-cols-2 gap-3 mt-3">
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">
-                                Date
-                              </label>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
                               <input
                                 type="date"
                                 value={review.overrideDate}
-                                onChange={(e) =>
-                                  handleOverrideDateChange(review.type, e.target.value)
-                                }
+                                onChange={(e) => handleOverrideDateChange(review.type, e.target.value)}
                                 className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               />
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">
-                                Time
-                              </label>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Time</label>
                               <input
                                 type="time"
                                 value={review.overrideTime}
-                                onChange={(e) =>
-                                  handleOverrideTimeChange(review.type, e.target.value)
-                                }
+                                onChange={(e) => handleOverrideTimeChange(review.type, e.target.value)}
                                 className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               />
                             </div>
@@ -467,7 +455,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Employee', 'Position', 'Start Date', '30-Day', '60-Day', '180-Day', 'Flags', ''].map(
+                  {['Employee', 'Position', 'Manager', 'Start Date', '30-Day', '60-Day', '180-Day', 'Flags', ''].map(
                     (col) => (
                       <th
                         key={col}
@@ -487,6 +475,15 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                       {positionMap.get(emp.positionId) ?? (
+                        <span className="text-gray-400 italic text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                      {emp.managerId ? (
+                        managerMap.get(emp.managerId) ?? (
+                          <span className="text-gray-400 italic text-xs">—</span>
+                        )
+                      ) : (
                         <span className="text-gray-400 italic text-xs">—</span>
                       )}
                     </td>
