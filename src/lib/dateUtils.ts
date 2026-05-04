@@ -153,6 +153,15 @@ export function daysUntil(dateStr: string): number {
 }
 
 /**
+ * Return the next business day (non-weekend, non-holiday) after a given date.
+ */
+export function nextBusinessDay(dateStr: string, holidays: Holiday[]): string {
+  const d = parseLocalDate(dateStr);
+  d.setDate(d.getDate() + 1);
+  return toDateString(calcReviewDate(d, holidays));
+}
+
+/**
  * Returns: 'overdue' | 'today' | 'upcoming'
  */
 export function reviewStatus(dateStr: string): 'overdue' | 'today' | 'upcoming' {

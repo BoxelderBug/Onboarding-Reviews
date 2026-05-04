@@ -79,15 +79,17 @@ export async function createCalendarEvent(
   startTime: string,
   durationMinutes: number,
   timeZone: string,
-  attendeeEmails: string[]
+  attendeeEmails: string[],
+  description?: string
 ): Promise<string> {
   const endTime = addMinutes(startTime, durationMinutes);
-  const event = {
+  const event: Record<string, unknown> = {
     summary,
     start: { dateTime: `${date}T${startTime}:00`, timeZone },
     end: { dateTime: `${date}T${endTime}:00`, timeZone },
     attendees: attendeeEmails.filter(Boolean).map((email) => ({ email })),
   };
+  if (description) event.description = description;
 
   const res = await fetch(
     'https://www.googleapis.com/calendar/v3/calendars/primary/events',

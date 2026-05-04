@@ -7,7 +7,25 @@ export interface Review {
   overrideEnabled: boolean;
   overrideDate: string; // YYYY-MM-DD
   overrideTime: string; // HH:MM
-  gcalEventId?: string; // Google Calendar event ID once pushed
+  gcalEventId?: string;
+}
+
+export interface ScheduleEvent {
+  id: string;
+  title: string;
+  description: string;
+  startTime: string; // HH:MM
+  duration: number; // minutes
+  inviteEmployee: boolean;
+  inviteManager: boolean;
+  additionalEmails: string; // comma-separated
+}
+
+export interface SchedulePushRecord {
+  templateEventId: string;
+  day: 1 | 2;
+  scheduleDate: string; // YYYY-MM-DD — the Day 1 date this was pushed for
+  gcalEventId: string;
 }
 
 export interface Employee {
@@ -20,6 +38,7 @@ export interface Employee {
   email: string;
   startDate: string; // YYYY-MM-DD
   reviews: Review[];
+  schedulingPushes?: SchedulePushRecord[];
 }
 
 export interface Holiday {
@@ -47,7 +66,9 @@ export interface Settings {
   defaultDuration: number; // minutes
   positions: Position[];
   managers: Manager[];
-  calendarTimeZone: string; // IANA timezone, e.g. "America/Chicago"
+  calendarTimeZone: string;
+  firstDaySchedule: ScheduleEvent[];
+  secondDaySchedule: ScheduleEvent[];
 }
 
 export interface AppData {

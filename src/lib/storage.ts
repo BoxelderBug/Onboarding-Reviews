@@ -23,6 +23,8 @@ export const DEFAULT_DATA: AppData = {
     ],
     managers: [],
     calendarTimeZone: 'America/Chicago',
+    firstDaySchedule: [],
+    secondDaySchedule: [],
   },
 };
 
@@ -44,6 +46,8 @@ export function loadData(): AppData {
         managers: parsed.settings?.managers ?? [],
         calendarTimeZone:
           parsed.settings?.calendarTimeZone ?? DEFAULT_DATA.settings.calendarTimeZone,
+        firstDaySchedule: parsed.settings?.firstDaySchedule ?? [],
+        secondDaySchedule: parsed.settings?.secondDaySchedule ?? [],
       },
     };
   } catch {
