@@ -382,7 +382,6 @@ interface SectionTableProps {
   managerMap: Map<string, string>;
   managerEmailMap: Map<string, string>;
   durationMap: Map<string, number>;
-  reviewEmailsRecord: Record<ReviewType, string>;
   concurrentPairs: string[];
   timeZone: string;
   onUpdateReview: (employeeId: string, review: Review) => void;
@@ -398,7 +397,6 @@ function SectionTable({
   managerMap,
   managerEmailMap,
   durationMap,
-  reviewEmailsRecord,
   concurrentPairs,
   timeZone,
   onUpdateReview,
@@ -436,7 +434,7 @@ function SectionTable({
               const duration = durationMap.get(row.employee.positionId) ?? 30;
               const position = positionObjectMap.get(row.employee.positionId);
               const reviewTemplate = position?.reviewTemplates?.[row.review.type];
-              const extraEmails = (reviewEmailsRecord[row.review.type] ?? '')
+              const extraEmails = (reviewTemplate?.additionalEmails ?? '')
                 .split(',').map((s) => s.trim()).filter(Boolean);
               return (
                 <ReviewTableRow
@@ -495,7 +493,6 @@ export default function ReviewsDashboard({ data, onUpdateReview }: ReviewsDashbo
   const durationMap = new Map(data.settings.positions.map((p) => [p.id, p.duration]));
   const managerMap = new Map(data.settings.managers.map((m) => [m.id, m.name]));
   const managerEmailMap = new Map(data.settings.managers.map((m) => [m.id, m.email]));
-  const reviewEmailsRecord = data.settings.reviewEmails ?? ({ 30: '', 60: '', 180: '' } as Record<ReviewType, string>);
   const concurrentPairs = data.settings.concurrentReviewPairs ?? [];
   const timeZone = data.settings.calendarTimeZone;
 
@@ -515,7 +512,7 @@ export default function ReviewsDashboard({ data, onUpdateReview }: ReviewsDashbo
     );
   }
 
-  const tableProps = { allRows: rows, positionMap, positionObjectMap, managerMap, managerEmailMap, durationMap, reviewEmailsRecord, concurrentPairs, timeZone, onUpdateReview };
+  const tableProps = { allRows: rows, positionMap, positionObjectMap, managerMap, managerEmailMap, durationMap, concurrentPairs, timeZone, onUpdateReview };
 
   return (
     <div>

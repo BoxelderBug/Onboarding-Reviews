@@ -60,6 +60,7 @@ export interface Holiday {
 export interface ReviewTemplate {
   title: string;
   description: string;
+  additionalEmails?: string; // comma-separated
 }
 
 export interface Position {

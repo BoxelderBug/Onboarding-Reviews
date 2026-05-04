@@ -392,15 +392,17 @@ interface PositionForm {
   name: string;
   startTime: string;
   duration: string;
-  t30title: string; t30desc: string;
-  t60title: string; t60desc: string;
-  t180title: string; t180desc: string;
+  t30title: string; t30desc: string; t30emails: string;
+  t60title: string; t60desc: string; t60emails: string;
+  t180title: string; t180desc: string; t180emails: string;
 }
 
 function emptyPositionForm(): PositionForm {
   return {
     id: generateId(), name: '', startTime: '09:00', duration: '30',
-    t30title: '', t30desc: '', t60title: '', t60desc: '', t180title: '', t180desc: '',
+    t30title: '', t30desc: '', t30emails: '',
+    t60title: '', t60desc: '', t60emails: '',
+    t180title: '', t180desc: '', t180emails: '',
   };
 }
 
@@ -409,10 +411,13 @@ function positionToForm(p: Position): PositionForm {
     id: p.id, name: p.name, startTime: p.startTime, duration: String(p.duration),
     t30title: p.reviewTemplates?.[30]?.title ?? '',
     t30desc:  p.reviewTemplates?.[30]?.description ?? '',
+    t30emails: p.reviewTemplates?.[30]?.additionalEmails ?? '',
     t60title: p.reviewTemplates?.[60]?.title ?? '',
     t60desc:  p.reviewTemplates?.[60]?.description ?? '',
+    t60emails: p.reviewTemplates?.[60]?.additionalEmails ?? '',
     t180title: p.reviewTemplates?.[180]?.title ?? '',
     t180desc:  p.reviewTemplates?.[180]?.description ?? '',
+    t180emails: p.reviewTemplates?.[180]?.additionalEmails ?? '',
   };
 }
 
@@ -471,11 +476,6 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
   const [deletePositionConfirm, setDeletePositionConfirm] = useState<string | null>(null);
   const [showPositionTemplates, setShowPositionTemplates] = useState(false);
 
-  const [email30, setEmail30] = useState(settings.reviewEmails?.[30] ?? '');
-  const [email60, setEmail60] = useState(settings.reviewEmails?.[60] ?? '');
-  const [email180, setEmail180] = useState(settings.reviewEmails?.[180] ?? '');
-  const [reviewEmailsSaved, setReviewEmailsSaved] = useState(false);
-
   const [showAddManager, setShowAddManager] = useState(false);
   const [editingManagerId, setEditingManagerId] = useState<string | null>(null);
   const [managerForm, setManagerForm] = useState<ManagerForm>(emptyManagerForm());
@@ -507,22 +507,16 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
   function handleOpenEditPosition(pos: Position) { setPositionForm(positionToForm(pos)); setEditingPositionId(pos.id); setShowPositionTemplates(!!pos.reviewTemplates); setShowAddPosition(true); }
   function handleCancelPosition() { setShowAddPosition(false); setEditingPositionId(null); setPositionForm(emptyPositionForm()); setShowPositionTemplates(false); }
 
-  function handleSaveReviewEmails() {
-    updateSettings({ reviewEmails: { 30: email30.trim(), 60: email60.trim(), 180: email180.trim() } });
-    setReviewEmailsSaved(true);
-    setTimeout(() => setReviewEmailsSaved(false), 2000);
-  }
-
   function handleSavePosition() {
     const name = positionForm.name.trim();
     if (!name || !positionForm.startTime) return;
     const rt: Position['reviewTemplates'] = {};
-    if (positionForm.t30title || positionForm.t30desc)
-      rt[30] = { title: positionForm.t30title.trim(), description: positionForm.t30desc.trim() };
-    if (positionForm.t60title || positionForm.t60desc)
-      rt[60] = { title: positionForm.t60title.trim(), description: positionForm.t60desc.trim() };
-    if (positionForm.t180title || positionForm.t180desc)
-      rt[180] = { title: positionForm.t180title.trim(), description: positionForm.t180desc.trim() };
+    if (positionForm.t30title || positionForm.t30desc || positionForm.t30emails)
+      rt[30] = { title: positionForm.t30title.trim(), description: positionForm.t30desc.trim(), additionalEmails: positionForm.t30emails.trim() || undefined };
+    if (positionForm.t60title || positionForm.t60desc || positionForm.t60emails)
+      rt[60] = { title: positionForm.t60title.trim(), description: positionForm.t60desc.trim(), additionalEmails: positionForm.t60emails.trim() || undefined };
+    if (positionForm.t180title || positionForm.t180desc || positionForm.t180emails)
+      rt[180] = { title: positionForm.t180title.trim(), description: positionForm.t180desc.trim(), additionalEmails: positionForm.t180emails.trim() || undefined };
     const position: Position = {
       id: editingPositionId ?? positionForm.id, name,
       startTime: positionForm.startTime, duration: parseInt(positionForm.duration, 10) || 30,
@@ -692,6 +686,7 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
                   {([30, 60, 180] as ReviewType[]).map((type) => {
                     const titleKey = `t${type}title` as keyof PositionForm;
                     const descKey = `t${type}desc` as keyof PositionForm;
+                    const emailsKey = `t${type}emails` as keyof PositionForm;
                     const colors: Record<ReviewType, string> = { 30: 'text-blue-700', 60: 'text-orange-700', 180: 'text-purple-700' };
                     return (
                       <div key={type} className="space-y-2">
@@ -717,6 +712,16 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
                               placeholder="Optional agenda or notes"
                             />
                           </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Additional Invites</label>
+                          <input
+                            type="text"
+                            value={positionForm[emailsKey] as string}
+                            onChange={(e) => setPositionForm((f) => ({ ...f, [emailsKey]: e.target.value }))}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="email1@company.com, email2@company.com"
+                          />
                         </div>
                       </div>
                     );
@@ -864,41 +869,6 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
         )}
       </div>
 
-      {/* Review Meeting Invites */}
-      <div>
-        <h2 className="text-base font-semibold text-gray-900 mb-1">Review Meeting Invites</h2>
-        <p className="text-sm text-gray-500 mb-4">Additional emails to include on each review type. The employee and their manager are always added automatically.</p>
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-100">
-          {([30, 60, 180] as ReviewType[]).map((type, i) => {
-            const val = i === 0 ? email30 : i === 1 ? email60 : email180;
-            const setter = i === 0 ? setEmail30 : i === 1 ? setEmail60 : setEmail180;
-            const colors: Record<ReviewType, string> = { 30: 'bg-blue-100 text-blue-700', 60: 'bg-orange-100 text-orange-700', 180: 'bg-purple-100 text-purple-700' };
-            return (
-              <div key={type} className="flex items-center gap-4 px-4 py-3">
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 ${colors[type]}`}>
-                  {type}-Day
-                </span>
-                <input
-                  type="text"
-                  value={val}
-                  onChange={(e) => setter(e.target.value)}
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="email1@company.com, email2@company.com"
-                />
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-3 flex items-center gap-3">
-          <button
-            onClick={handleSaveReviewEmails}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Check className="w-4 h-4" />Save
-          </button>
-          {reviewEmailsSaved && <span className="text-sm text-green-600 font-medium">Saved!</span>}
-        </div>
-      </div>
 
       {/* Concurrent Review Scheduling */}
       <div>
