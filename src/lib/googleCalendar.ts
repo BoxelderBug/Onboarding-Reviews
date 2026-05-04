@@ -110,6 +110,66 @@ export async function createCalendarEvent(
   return data.id as string;
 }
 
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  startTime: string; // formatted, empty for all-day events
+  endTime: string;
+  isAllDay: boolean;
+}
+
+export async function fetchDayEvents(
+  accessToken: string,
+  date: string,      // YYYY-MM-DD
+  timeZone: string
+): Promise<CalendarEvent[]> {
+  const timeMin = toRFC3339(date, '00:00', timeZone);
+  const timeMax = toRFC3339(date, '23:59', timeZone);
+  const params = new URLSearchParams({
+    timeMin,
+    timeMax,
+    singleEvents: 'true',
+    orderBy: 'startTime',
+    maxResults: '25',
+  });
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) throw new Error(`events.list failed: ${res.status}`);
+  const data = await res.json();
+  const items: Array<{
+    id: string;
+    summary?: string;
+    start: { dateTime?: string; date?: string };
+    end: { dateTime?: string; date?: string };
+  }> = data.items ?? [];
+
+  return items.map((item) => {
+    const isAllDay = !item.start.dateTime;
+    let startTime = '';
+    let endTime = '';
+    if (!isAllDay && item.start.dateTime && item.end.dateTime) {
+      const fmt = (s: string) =>
+        new Date(s).toLocaleTimeString('en-US', {
+          timeZone,
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        });
+      startTime = fmt(item.start.dateTime);
+      endTime = fmt(item.end.dateTime);
+    }
+    return {
+      id: item.id,
+      title: item.summary ?? '(No title)',
+      startTime,
+      endTime,
+      isAllDay,
+    };
+  });
+}
+
 export interface CalendarRoom {
   id: string;
   name: string;

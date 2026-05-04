@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, Fragment } from 'react';
 import clsx from 'clsx';
 import {
   AlertCircle,
@@ -13,6 +13,8 @@ import {
   Loader2,
   AlertTriangle,
   ArrowUpRight,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   effectiveDate,
@@ -22,7 +24,8 @@ import {
   displayDate,
   formatTime,
 } from '@/lib/dateUtils';
-import { checkBusy, createCalendarEvent, deleteCalendarEvent } from '@/lib/googleCalendar';
+import { checkBusy, createCalendarEvent, deleteCalendarEvent, fetchDayEvents } from '@/lib/googleCalendar';
+import type { CalendarEvent } from '@/lib/googleCalendar';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
 import type { AppData, Employee, Position, Review, ReviewTemplate, ReviewType } from '@/lib/types';
 
@@ -279,6 +282,169 @@ function CalendarCell({
 }
 
 const COLS = ['Employee', 'Position', 'Manager', 'Review', 'Date', 'Time', 'Flags', 'Status', 'Calendar'];
+const COL_COUNT = COLS.length;
+
+// ---------------------------------------------------------------------------
+// ReviewTableRow — one data row + optional expanded day-calendar preview
+// ---------------------------------------------------------------------------
+
+interface ReviewTableRowProps {
+  row: ReviewRow;
+  allRows: ReviewRow[];
+  concurrentPairs: string[];
+  positionName: string;
+  mgrName: string;
+  mgrEmail?: string;
+  duration: number;
+  reviewTemplate?: ReviewTemplate;
+  extraEmails: string[];
+  timeZone: string;
+  onUpdateReview: (employeeId: string, review: Review) => void;
+}
+
+function ReviewTableRow({
+  row,
+  allRows,
+  concurrentPairs,
+  positionName,
+  mgrName,
+  mgrEmail,
+  duration,
+  reviewTemplate,
+  extraEmails,
+  timeZone,
+  onUpdateReview,
+}: ReviewTableRowProps) {
+  const { isConnected, accessToken } = useGoogleCalendar();
+  const [expanded, setExpanded] = useState(false);
+  const [dayEvents, setDayEvents] = useState<CalendarEvent[] | null>(null);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [eventsError, setEventsError] = useState(false);
+
+  async function handleToggle() {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && dayEvents === null && accessToken) {
+      setLoadingEvents(true);
+      setEventsError(false);
+      try {
+        const events = await fetchDayEvents(accessToken, row.effDate, timeZone);
+        setDayEvents(events);
+      } catch {
+        setEventsError(true);
+      } finally {
+        setLoadingEvents(false);
+      }
+    }
+  }
+
+  return (
+    <Fragment>
+      <tr className={clsx('hover:bg-gray-50', expanded && 'bg-gray-50')}>
+        <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">
+          {row.employee.lastName}, {row.employee.firstName}
+        </td>
+        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+          {positionName || <span className="text-gray-400 italic text-xs">—</span>}
+        </td>
+        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+          {mgrName || <span className="text-gray-400 italic text-xs">—</span>}
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap">
+          <ReviewTypeBadge type={row.review.type} />
+        </td>
+        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+          <div className="flex items-center gap-1">
+            {displayDate(row.effDate)}
+            <a
+              href={gcalDayUrl(row.effDate)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open in Google Calendar"
+              className="text-gray-400 hover:text-blue-600 transition-colors"
+            >
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </a>
+            {isConnected && (
+              <button
+                onClick={handleToggle}
+                title={expanded ? 'Hide calendar preview' : 'Preview calendar for this day'}
+                className="text-gray-400 hover:text-blue-600 transition-colors"
+              >
+                {expanded
+                  ? <ChevronUp className="w-3.5 h-3.5" />
+                  : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+            )}
+          </div>
+        </td>
+        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+          {formatTime(row.effTime)}
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap">
+          {row.employee.outOfState && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
+              Out-of-State
+            </span>
+          )}
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap">
+          <StatusBadge status={row.status} days={row.days} />
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap">
+          <CalendarCell
+            row={row}
+            allRows={allRows}
+            positionDurationMinutes={duration}
+            timeZone={timeZone}
+            managerEmail={mgrEmail}
+            reviewTemplate={reviewTemplate}
+            extraEmails={extraEmails}
+            concurrentPairs={concurrentPairs}
+            onUpdateReview={onUpdateReview}
+          />
+        </td>
+      </tr>
+
+      {expanded && (
+        <tr>
+          <td colSpan={COL_COUNT} className="px-6 py-3 bg-blue-50 border-b border-gray-100">
+            {loadingEvents && (
+              <div className="flex items-center gap-2 text-xs text-gray-500 py-1">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Loading calendar for {displayDate(row.effDate)}…
+              </div>
+            )}
+            {eventsError && (
+              <p className="text-xs text-red-600 py-1">Failed to load calendar events.</p>
+            )}
+            {!loadingEvents && !eventsError && dayEvents !== null && (
+              <div className="py-1">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  {displayDate(row.effDate)} — What&apos;s on your calendar
+                </p>
+                {dayEvents.length === 0 ? (
+                  <p className="text-xs text-green-700 font-medium">No events — calendar is clear.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {dayEvents.map((ev) => (
+                      <div key={ev.id} className="flex items-start gap-3 text-xs">
+                        <span className="text-gray-400 shrink-0 w-32">
+                          {ev.isAllDay ? 'All day' : `${ev.startTime} – ${ev.endTime}`}
+                        </span>
+                        <span className="text-gray-800">{ev.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+}
 
 interface SectionTableProps {
   rows: ReviewRow[];
@@ -338,7 +504,6 @@ function SectionTable({
           </thead>
           <tbody className="bg-white divide-y divide-gray-100">
             {rows.map((row) => {
-              const mgr = row.employee.managerId ? managerMap.get(row.employee.managerId) : undefined;
               const mgrEmail = row.employee.managerId
                 ? managerEmailMap.get(row.employee.managerId)
                 : undefined;
@@ -347,67 +512,21 @@ function SectionTable({
               const reviewTemplate = position?.reviewTemplates?.[row.review.type];
               const extraEmails = (reviewEmailsRecord[row.review.type] ?? '')
                 .split(',').map((s) => s.trim()).filter(Boolean);
-
               return (
-                <tr
+                <ReviewTableRow
                   key={`${row.employee.id}-${row.review.type}`}
-                  className="hover:bg-gray-50"
-                >
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">
-                    {row.employee.lastName}, {row.employee.firstName}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                    {positionMap.get(row.employee.positionId) ?? (
-                      <span className="text-gray-400 italic text-xs">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                    {mgr ?? <span className="text-gray-400 italic text-xs">—</span>}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <ReviewTypeBadge type={row.review.type} />
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
-                    <div className="flex items-center gap-1">
-                      {displayDate(row.effDate)}
-                      <a
-                        href={gcalDayUrl(row.effDate)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Open in Google Calendar"
-                        className="text-gray-400 hover:text-blue-600 transition-colors"
-                      >
-                        <ArrowUpRight className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
-                    {formatTime(row.effTime)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    {row.employee.outOfState && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
-                        Out-of-State
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <StatusBadge status={row.status} days={row.days} />
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <CalendarCell
-                      row={row}
-                      allRows={allRows}
-                      positionDurationMinutes={duration}
-                      timeZone={timeZone}
-                      managerEmail={mgrEmail}
-                      reviewTemplate={reviewTemplate}
-                      extraEmails={extraEmails}
-                      concurrentPairs={concurrentPairs}
-                      onUpdateReview={onUpdateReview}
-                    />
-                  </td>
-                </tr>
+                  row={row}
+                  allRows={allRows}
+                  concurrentPairs={concurrentPairs}
+                  positionName={positionMap.get(row.employee.positionId) ?? ''}
+                  mgrName={row.employee.managerId ? (managerMap.get(row.employee.managerId) ?? '') : ''}
+                  mgrEmail={mgrEmail}
+                  duration={duration}
+                  reviewTemplate={reviewTemplate}
+                  extraEmails={extraEmails}
+                  timeZone={timeZone}
+                  onUpdateReview={onUpdateReview}
+                />
               );
             })}
           </tbody>
