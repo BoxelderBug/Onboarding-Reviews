@@ -15,6 +15,7 @@ import {
   ArrowUpRight,
   ChevronDown,
   ChevronUp,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   effectiveDate,
@@ -26,6 +27,7 @@ import {
 } from '@/lib/dateUtils';
 import { checkBusy, createCalendarEvent, deleteCalendarEvent, fetchDayEvents } from '@/lib/googleCalendar';
 import type { CalendarEvent } from '@/lib/googleCalendar';
+import { exportToGoogleSheets } from '@/lib/googleSheets';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
 import type { AppData, Employee, Position, Review, ReviewTemplate, ReviewType } from '@/lib/types';
 
@@ -542,7 +544,27 @@ interface ReviewsDashboardProps {
 }
 
 export default function ReviewsDashboard({ data, onUpdateReview }: ReviewsDashboardProps) {
-  const { isConnected } = useGoogleCalendar();
+  const { isConnected, accessToken } = useGoogleCalendar();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  async function handleExport() {
+    if (!accessToken) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const url = await exportToGoogleSheets(accessToken, data);
+      window.open(url, '_blank');
+    } catch (err) {
+      if (err instanceof Error && err.message === 'SCOPE_MISSING') {
+        setExportError('Spreadsheet permission not granted. Disconnect and reconnect Google Calendar to enable.');
+      } else {
+        setExportError('Export failed. Please try again.');
+      }
+    } finally {
+      setExporting(false);
+    }
+  }
   const rows = buildRows(data);
   const positionMap = new Map(data.settings.positions.map((p) => [p.id, p.name]));
   const positionObjectMap = new Map(data.settings.positions.map((p) => [p.id, p]));
@@ -605,8 +627,26 @@ export default function ReviewsDashboard({ data, onUpdateReview }: ReviewsDashbo
               Connect Google Calendar in Settings to push events
             </span>
           )}
+          {isConnected && data.employees.length > 0 && (
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-sm"
+              title="Export review schedule to Google Sheets"
+            >
+              {exporting
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <FileSpreadsheet className="w-4 h-4 text-green-600" />}
+              {exporting ? 'Exporting…' : 'Export to Sheets'}
+            </button>
+          )}
         </div>
       </div>
+      {exportError && (
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+          {exportError}
+        </div>
+      )}
 
       <SectionTable
         rows={overdue}
