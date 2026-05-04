@@ -1,20 +1,21 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import clsx from 'clsx';
-import { Plus, Pencil, Trash2, X, Check, Users, Info, AlertTriangle, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Check, Users, Info, AlertTriangle, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   buildReviews,
   displayDate,
   effectiveDate,
   effectiveTime,
   formatTime,
+  nextBusinessDay,
   parseLocalDate,
   toDateString,
 } from '@/lib/dateUtils';
 import { checkBusy } from '@/lib/googleCalendar';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
-import type { AppData, Employee, Holiday, Review, ReviewType } from '@/lib/types';
+import type { AppData, Employee, Holiday, Review, ReviewType, ScheduleEvent } from '@/lib/types';
 
 function generateId(): string {
   return `emp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -161,6 +162,89 @@ function formToEmployee(form: FormState): Employee {
 }
 
 // ---------------------------------------------------------------------------
+// Employee schedule preview (expanded row)
+// ---------------------------------------------------------------------------
+
+interface SchedulePreviewProps {
+  emp: Employee;
+  firstDaySchedule: ScheduleEvent[];
+  secondDaySchedule: ScheduleEvent[];
+  holidays: Holiday[];
+}
+
+function EmployeeSchedulePreview({ emp, firstDaySchedule, secondDaySchedule, holidays }: SchedulePreviewProps) {
+  const day2Date = emp.startDate ? nextBusinessDay(emp.startDate, holidays) : '';
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+      {/* Review dates */}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Reviews</p>
+        {emp.reviews.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">No reviews calculated</p>
+        ) : (
+          <div className="space-y-1.5">
+            {(emp.reviews as Review[]).map((r) => (
+              <div key={r.type} className="flex items-center gap-2">
+                <span className={clsx('inline-flex px-1.5 py-0.5 rounded text-xs font-semibold', REVIEW_BADGE_COLORS[r.type])}>
+                  {r.type}-Day
+                </span>
+                <span className="text-xs text-gray-700">{displayDate(effectiveDate(r))}</span>
+                <span className="text-xs text-gray-400">{formatTime(effectiveTime(r))}</span>
+                {r.overrideEnabled && <span className="text-xs text-amber-500 font-medium">Override</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Day 1 */}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          Day 1{emp.startDate ? ` — ${displayDate(emp.startDate)}` : ''}
+        </p>
+        {!emp.startDate ? (
+          <p className="text-xs text-gray-400 italic">No start date set</p>
+        ) : firstDaySchedule.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">No events configured</p>
+        ) : (
+          <div className="space-y-1">
+            {firstDaySchedule.map((ev) => (
+              <div key={ev.id} className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 w-12 shrink-0">{formatTime(ev.startTime)}</span>
+                <span className="text-xs text-gray-700">{ev.title}</span>
+                <span className="text-xs text-gray-400">{ev.duration}m</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Day 2 */}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          Day 2{day2Date ? ` — ${displayDate(day2Date)}` : ''}
+        </p>
+        {!emp.startDate ? (
+          <p className="text-xs text-gray-400 italic">No start date set</p>
+        ) : secondDaySchedule.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">No events configured</p>
+        ) : (
+          <div className="space-y-1">
+            {secondDaySchedule.map((ev) => (
+              <div key={ev.id} className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 w-12 shrink-0">{formatTime(ev.startTime)}</span>
+                <span className="text-xs text-gray-700">{ev.title}</span>
+                <span className="text-xs text-gray-400">{ev.duration}m</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -180,6 +264,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
   const [form, setForm] = useState<FormState>(buildEmptyForm());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [busyStatus, setBusyStatus] = useState<Record<ReviewType, BusyStatus>>(IDLE_BUSY);
+  const [expandedEmployeeId, setExpandedEmployeeId] = useState<string | null>(null);
 
   // Key that changes whenever an effective date/time changes — drives freeBusy checks
   const reviewCheckKey = form.reviews
@@ -652,9 +737,21 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
                 {sortedEmployees.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-gray-50">
+                  <Fragment key={emp.id}>
+                  <tr className={clsx('hover:bg-gray-50', expandedEmployeeId === emp.id && 'bg-gray-50')}>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">
-                      {emp.lastName}, {emp.firstName}
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setExpandedEmployeeId(expandedEmployeeId === emp.id ? null : emp.id)}
+                          className="p-0.5 text-gray-400 hover:text-blue-600 rounded transition-colors shrink-0"
+                          title="Show schedule preview"
+                        >
+                          {expandedEmployeeId === emp.id
+                            ? <ChevronDown className="w-3.5 h-3.5" />
+                            : <ChevronRight className="w-3.5 h-3.5" />}
+                        </button>
+                        {emp.lastName}, {emp.firstName}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                       {positionMap.get(emp.positionId) ?? (
@@ -733,6 +830,19 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                       </div>
                     </td>
                   </tr>
+                  {expandedEmployeeId === emp.id && (
+                    <tr>
+                      <td colSpan={9} className="px-6 py-4 bg-blue-50 border-b border-gray-100">
+                        <EmployeeSchedulePreview
+                          emp={emp}
+                          firstDaySchedule={data.settings.firstDaySchedule}
+                          secondDaySchedule={data.settings.secondDaySchedule}
+                          holidays={data.holidays}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

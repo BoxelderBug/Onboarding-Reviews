@@ -9,6 +9,8 @@ import {
   Users2,
   AlertCircle,
   MapPin,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { AppData, ScheduleEvent, SchedulePushRecord } from '@/lib/types';
@@ -32,8 +34,9 @@ export default function SchedulingTab({ data, onChange }: Props) {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
   const [pushing, setPushing] = useState<Record<PushKey, boolean>>({});
-  const [unscheduling, setUnscheduling] = useState<Record<PushKey, boolean>>({});
-  const [errors, setErrors] = useState<Record<PushKey, string>>({});
+  const [unscheduling, setUnscheduling] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showHistory, setShowHistory] = useState(false);
 
   const { settings, employees } = data;
   const day2Date = selectedDate ? nextBusinessDay(selectedDate, data.holidays) : '';
@@ -211,6 +214,72 @@ export default function SchedulingTab({ data, onChange }: Props) {
     } finally {
       setUnscheduling((u) => ({ ...u, [key]: false }));
     }
+  }
+
+  async function handleUnscheduleById(
+    templateEventId: string,
+    day: 1 | 2,
+    scheduleDate: string,
+    gcalEventId: string
+  ) {
+    if (!accessToken) return;
+    setUnscheduling((u) => ({ ...u, [gcalEventId]: true }));
+    setErrors((e) => { const n = { ...e }; delete n[gcalEventId]; return n; });
+    try {
+      await deleteCalendarEvent(accessToken, gcalEventId);
+      const updatedEmployees = employees.map((emp) => ({
+        ...emp,
+        schedulingPushes: (emp.schedulingPushes ?? []).filter(
+          (p) =>
+            !(p.templateEventId === templateEventId && p.day === day && p.scheduleDate === scheduleDate)
+        ),
+      }));
+      onChange({ ...data, employees: updatedEmployees });
+    } catch (err) {
+      setErrors((e) => ({
+        ...e,
+        [gcalEventId]: err instanceof Error ? err.message : 'Unschedule failed',
+      }));
+    } finally {
+      setUnscheduling((u) => ({ ...u, [gcalEventId]: false }));
+    }
+  }
+
+  // Collect all unique push records across all employees for the history section
+  type PushHistoryEntry = {
+    gcalEventId: string;
+    templateEventId: string;
+    day: 1 | 2;
+    scheduleDate: string;
+    employeeNames: string[];
+  };
+  const pushHistoryMap = new Map<string, PushHistoryEntry>();
+  for (const emp of employees) {
+    for (const p of emp.schedulingPushes ?? []) {
+      const existing = pushHistoryMap.get(p.gcalEventId);
+      const name = `${emp.firstName} ${emp.lastName}`;
+      if (existing) {
+        existing.employeeNames.push(name);
+      } else {
+        pushHistoryMap.set(p.gcalEventId, {
+          gcalEventId: p.gcalEventId,
+          templateEventId: p.templateEventId,
+          day: p.day,
+          scheduleDate: p.scheduleDate,
+          employeeNames: [name],
+        });
+      }
+    }
+  }
+  const pushHistory = Array.from(pushHistoryMap.values()).sort((a, b) =>
+    a.scheduleDate.localeCompare(b.scheduleDate)
+  );
+
+  function findTemplateEvent(templateEventId: string): ScheduleEvent | undefined {
+    return (
+      settings.firstDaySchedule.find((e) => e.id === templateEventId) ??
+      settings.secondDaySchedule.find((e) => e.id === templateEventId)
+    );
   }
 
   function renderEventRow(event: ScheduleEvent, day: 1 | 2, scheduleDate: string) {
@@ -463,6 +532,89 @@ export default function SchedulingTab({ data, onChange }: Props) {
         hasDay2Events &&
         day2Date &&
         renderDaySection('Day 2', settings.secondDaySchedule, 2, day2Date)}
+
+      {/* Previously Scheduled Events */}
+      {pushHistory.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+          >
+            <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              Previously Scheduled Events
+              <span className="text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-full px-2 py-0.5">
+                {pushHistory.length}
+              </span>
+            </span>
+            {showHistory ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+          </button>
+          {showHistory && (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left px-4 py-2 text-xs text-gray-500 font-medium">Event</th>
+                    <th className="text-left px-4 py-2 text-xs text-gray-500 font-medium">Date</th>
+                    <th className="text-left px-4 py-2 text-xs text-gray-500 font-medium">Employees</th>
+                    <th className="text-right px-4 py-2 text-xs text-gray-500 font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pushHistory.map((entry) => {
+                    const tmpl = findTemplateEvent(entry.templateEventId);
+                    const isRemoving = unscheduling[entry.gcalEventId];
+                    const err = errors[entry.gcalEventId];
+                    return (
+                      <tr key={entry.gcalEventId} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-medium text-gray-900">
+                            {tmpl?.title ?? <span className="text-gray-400 italic text-xs">Deleted event</span>}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">Day {entry.day}</div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                          {displayDate(entry.scheduleDate)}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-600 max-w-xs">
+                          {entry.employeeNames.join(', ')}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {err && (
+                              <span title={err}>
+                                <AlertCircle className="w-4 h-4 text-red-500 cursor-help" />
+                              </span>
+                            )}
+                            <button
+                              onClick={() =>
+                                handleUnscheduleById(
+                                  entry.templateEventId,
+                                  entry.day,
+                                  entry.scheduleDate,
+                                  entry.gcalEventId
+                                )
+                              }
+                              disabled={isRemoving || !accessToken}
+                              className="flex items-center gap-1 px-2 py-1 text-xs bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50"
+                            >
+                              {isRemoving ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <CalendarOff className="w-3 h-3" />
+                              )}
+                              {isRemoving ? 'Removing…' : 'Unschedule'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
