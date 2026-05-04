@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import clsx from 'clsx';
-import { Plus, Pencil, Trash2, X, Check, Users, Info, AlertTriangle, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Check, Users, Info, AlertTriangle, Loader2, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
 import {
   buildReviews,
   displayDate,
@@ -13,7 +13,8 @@ import {
   parseLocalDate,
   toDateString,
 } from '@/lib/dateUtils';
-import { checkBusy } from '@/lib/googleCalendar';
+import { checkBusy, fetchDayEvents } from '@/lib/googleCalendar';
+import type { CalendarEvent } from '@/lib/googleCalendar';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
 import type { AppData, Employee, Holiday, Review, ReviewType, ScheduleEvent } from '@/lib/types';
 
@@ -265,6 +266,10 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [busyStatus, setBusyStatus] = useState<Record<ReviewType, BusyStatus>>(IDLE_BUSY);
   const [expandedEmployeeId, setExpandedEmployeeId] = useState<string | null>(null);
+  const [expandedReviewPreviews, setExpandedReviewPreviews] = useState<Partial<Record<ReviewType, boolean>>>({});
+  const [reviewPreviewEvents, setReviewPreviewEvents] = useState<Partial<Record<ReviewType, CalendarEvent[]>>>({});
+  const [reviewPreviewLoading, setReviewPreviewLoading] = useState<Partial<Record<ReviewType, boolean>>>({});
+  const [reviewPreviewError, setReviewPreviewError] = useState<Partial<Record<ReviewType, boolean>>>({});
 
   // Key that changes whenever an effective date/time changes — drives freeBusy checks
   const reviewCheckKey = form.reviews
@@ -301,9 +306,11 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.startDate, form.positionId, showForm]);
 
-  // Reset busy status when start date changes
+  // Reset busy status and preview cache when start date changes
   useEffect(() => {
     setBusyStatus(IDLE_BUSY);
+    setExpandedReviewPreviews({});
+    setReviewPreviewEvents({});
   }, [form.startDate]);
 
   // Run freeBusy checks (debounced 600ms) whenever effective dates/times change
@@ -343,6 +350,23 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewCheckKey, isConnected, accessToken, showForm]);
 
+  async function handleToggleReviewPreview(type: ReviewType, effDate: string) {
+    const next = !expandedReviewPreviews[type];
+    setExpandedReviewPreviews((prev) => ({ ...prev, [type]: next }));
+    if (next && reviewPreviewEvents[type] === undefined && effDate && isConnected && accessToken) {
+      setReviewPreviewLoading((prev) => ({ ...prev, [type]: true }));
+      setReviewPreviewError((prev) => ({ ...prev, [type]: false }));
+      try {
+        const events = await fetchDayEvents(accessToken, effDate, data.settings.calendarTimeZone);
+        setReviewPreviewEvents((prev) => ({ ...prev, [type]: events }));
+      } catch {
+        setReviewPreviewError((prev) => ({ ...prev, [type]: true }));
+      } finally {
+        setReviewPreviewLoading((prev) => ({ ...prev, [type]: false }));
+      }
+    }
+  }
+
   function handleOpenAdd() {
     setForm(buildEmptyForm());
     setEditingId(null);
@@ -362,6 +386,10 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
     setEditingId(null);
     setForm(buildEmptyForm());
     setBusyStatus(IDLE_BUSY);
+    setExpandedReviewPreviews({});
+    setReviewPreviewEvents({});
+    setReviewPreviewLoading({});
+    setReviewPreviewError({});
   }
 
   function handleFieldChange(field: keyof FormState, value: string | boolean) {
@@ -394,6 +422,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
         r.type === type ? { ...r, overrideDate: value } : r
       ),
     }));
+    setReviewPreviewEvents((prev) => { const next = { ...prev }; delete next[type]; return next; });
   }
 
   function handleOverrideTimeChange(type: ReviewType, value: string) {
@@ -595,12 +624,63 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
                           >
                             {REVIEW_LABELS[review.type]}
                           </span>
-                          {!review.overrideEnabled && (
-                            <span className="text-xs text-gray-500">
-                              {displayDate(effDate)} at {formatTime(effTime)}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {!review.overrideEnabled && (
+                              <span className="text-xs text-gray-500">
+                                {displayDate(effDate)} at {formatTime(effTime)}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleReviewPreview(review.type, effDate)}
+                              title={expandedReviewPreviews[review.type] ? 'Hide calendar preview' : "See what's on your calendar this day"}
+                              className="text-gray-400 hover:text-blue-600 transition-colors"
+                            >
+                              {expandedReviewPreviews[review.type]
+                                ? <ChevronUp className="w-3.5 h-3.5" />
+                                : <ChevronDown className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
                         </div>
+
+                        {/* Day calendar preview */}
+                        {expandedReviewPreviews[review.type] && (
+                          <div className="mb-3 rounded-md bg-white border border-gray-200 px-3 py-2.5">
+                            {!isConnected && (
+                              <p className="text-xs text-gray-500">Connect Google Calendar in Settings to preview this day&apos;s schedule.</p>
+                            )}
+                            {isConnected && reviewPreviewLoading[review.type] && (
+                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                Loading calendar for {displayDate(effDate)}…
+                              </div>
+                            )}
+                            {isConnected && reviewPreviewError[review.type] && (
+                              <p className="text-xs text-red-600">Failed to load calendar events.</p>
+                            )}
+                            {isConnected && !reviewPreviewLoading[review.type] && !reviewPreviewError[review.type] && reviewPreviewEvents[review.type] && (
+                              <div>
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                                  {displayDate(effDate)} — What&apos;s on your calendar
+                                </p>
+                                {reviewPreviewEvents[review.type]!.length === 0 ? (
+                                  <p className="text-xs text-green-700 font-medium">No events — calendar is clear.</p>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {reviewPreviewEvents[review.type]!.map((ev) => (
+                                      <div key={ev.id} className="flex items-start gap-3 text-xs">
+                                        <span className="text-gray-400 shrink-0 w-28">
+                                          {ev.isAllDay ? 'All day' : `${ev.startTime} – ${ev.endTime}`}
+                                        </span>
+                                        <span className="text-gray-800">{ev.title}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Moved notice */}
                         {movedMsg && (
