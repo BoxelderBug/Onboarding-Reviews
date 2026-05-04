@@ -775,7 +775,6 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
             </table>
           </div>
         )}
-      </div>
 
         {/* Fallback default start time */}
         <div className="mt-4 flex items-center gap-3">
