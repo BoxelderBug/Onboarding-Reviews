@@ -1,14 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import {
-  Plus, Search, ClipboardList, AlertCircle, ArrowUpDown,
+  Plus, Search, ClipboardList, AlertCircle, ArrowUpDown, Upload, X,
 } from 'lucide-react';
 import type { AppData, Requisition } from '@/lib/types';
 import {
   computeFunnel, daysBetween, newRequisition,
 } from '@/lib/requisitions';
+import { parseRequisitionCsv } from '@/lib/reqCsvImport';
 import { useRequisitions } from '@/context/RequisitionsContext';
 import RequisitionDetail from './RequisitionDetail';
 
@@ -100,28 +101,112 @@ export default function RequisitionsTab({ data, onChange }: RequisitionsTabProps
     void save(req).then(() => setSelectedId(req.id));
   }
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importInfo, setImportInfo] = useState<{
+    fileName: string;
+    reqNumber: string;
+    warnings: string[];
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  function handleImportClick() {
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    setImportError(null);
+    try {
+      const text = await file.text();
+      const { requisition, settingsPatch, warnings } = parseRequisitionCsv(text, data);
+      // Apply settings additions first (so the new req's interviewer/source refs resolve)
+      if (Object.keys(settingsPatch).length > 0) {
+        onChange({ ...data, settings: { ...data.settings, ...settingsPatch } });
+      }
+      await save(requisition);
+      setImportInfo({
+        fileName: file.name,
+        reqNumber: requisition.reqNumber || requisition.id,
+        warnings,
+      });
+      setSelectedId(requisition.id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to import CSV.';
+      setImportError(msg);
+    }
+  }
+
   const selected = selectedId ? requisitions.find((r) => r.id === selectedId) ?? null : null;
+
+  const importBanner = (importInfo || importError) ? (
+    <div className="mb-4">
+      {importError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2 text-sm text-red-700">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span className="flex-1">Import failed: {importError}</span>
+          <button onClick={() => setImportError(null)} className="text-red-400 hover:text-red-600">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+      {importInfo && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm">
+          <div className="flex items-start gap-2">
+            <Upload className="w-4 h-4 shrink-0 mt-0.5 text-emerald-700" />
+            <div className="flex-1 min-w-0">
+              <p className="text-emerald-900 font-medium">
+                Imported {importInfo.fileName} as Req #{importInfo.reqNumber}
+              </p>
+              {importInfo.warnings.length > 0 && (
+                <ul className="text-xs text-emerald-700 mt-1.5 space-y-0.5 list-disc pl-4">
+                  {importInfo.warnings.map((w, idx) => (
+                    <li key={idx}>{w}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <button onClick={() => setImportInfo(null)} className="text-emerald-500 hover:text-emerald-700 shrink-0">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  ) : null;
 
   // ----- Detail view -----
   if (selected) {
     return (
-      <RequisitionDetail
-        req={selected}
-        data={data}
-        onDataChange={onChange}
-        onBack={() => setSelectedId(null)}
-        onSave={save}
-        onDelete={async (id) => {
-          await remove(id);
-          setSelectedId(null);
-        }}
-      />
+      <>
+        {importBanner}
+        <RequisitionDetail
+          req={selected}
+          data={data}
+          onDataChange={onChange}
+          onBack={() => setSelectedId(null)}
+          onSave={save}
+          onDelete={async (id) => {
+            await remove(id);
+            setSelectedId(null);
+          }}
+        />
+      </>
     );
   }
 
   // ----- List view -----
   return (
     <div>
+      {importBanner}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        onChange={handleFileSelected}
+        className="hidden"
+      />
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Requisitions</h1>
@@ -130,15 +215,26 @@ export default function RequisitionsTab({ data, onChange }: RequisitionsTabProps
             {statusFilter !== 'all' && ` · filtering ${statusFilter}`}
           </p>
         </div>
-        <button
-          onClick={handleNewReq}
-          disabled={!isConfigured}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-          title={isConfigured ? 'Create a new requisition' : 'Configure Firebase first'}
-        >
-          <Plus className="w-4 h-4" />
-          New Requisition
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleImportClick}
+            disabled={!isConfigured}
+            className="inline-flex items-center gap-2 px-3 py-2 bg-white text-gray-700 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title={isConfigured ? 'Import a requisition CSV (2026 Requisitions sheet format)' : 'Configure Firebase first'}
+          >
+            <Upload className="w-4 h-4" />
+            Import CSV
+          </button>
+          <button
+            onClick={handleNewReq}
+            disabled={!isConfigured}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+            title={isConfigured ? 'Create a new requisition' : 'Configure Firebase first'}
+          >
+            <Plus className="w-4 h-4" />
+            New Requisition
+          </button>
+        </div>
       </div>
 
       {/* Not configured banner */}
