@@ -41,6 +41,14 @@ export const DEFAULT_INTERVIEW_SCORE_OPTIONS: ScoreOption[] = [
 
 export const DEFAULT_INTERVIEWERS: Interviewer[] = [];
 
+export const DEFAULT_LOCATION_MEDINA_ID = 'loc_medina';
+export const DEFAULT_LOCATION_NISSWA_ID = 'loc_nisswa';
+
+export const DEFAULT_LOCATIONS: Location[] = [
+  { id: DEFAULT_LOCATION_MEDINA_ID, name: 'Medina' },
+  { id: DEFAULT_LOCATION_NISSWA_ID, name: 'Nisswa' },
+];
+
 export const DEFAULT_DATA: AppData = {
   employees: [],
   holidays: [
@@ -61,7 +69,7 @@ export const DEFAULT_DATA: AppData = {
       { id: 'p4', name: 'Manager', startTime: '09:00', duration: 60 },
     ],
     managers: [],
-    locations: [],
+    locations: DEFAULT_LOCATIONS,
     reviewEmails: { 30: '', 60: '', 180: '' },
     concurrentReviewPairs: [],
     calendarTimeZone: 'America/Chicago',
@@ -91,7 +99,10 @@ export function loadData(): AppData {
           parsed.settings?.defaultDuration ?? DEFAULT_DATA.settings.defaultDuration,
         positions: parsed.settings?.positions ?? DEFAULT_DATA.settings.positions,
         managers: parsed.settings?.managers ?? [],
-        locations: (parsed.settings?.locations ?? []) as Location[],
+        locations:
+          parsed.settings?.locations && parsed.settings.locations.length > 0
+            ? (parsed.settings.locations as Location[])
+            : DEFAULT_LOCATIONS,
         reviewEmails: parsed.settings?.reviewEmails ?? { 30: '', 60: '', 180: '' },
         concurrentReviewPairs: parsed.settings?.concurrentReviewPairs ?? [],
         calendarTimeZone:

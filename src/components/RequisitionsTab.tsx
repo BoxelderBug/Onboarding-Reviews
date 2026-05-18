@@ -93,7 +93,10 @@ export default function RequisitionsTab({ data, onChange }: RequisitionsTabProps
   }
 
   function handleNewReq() {
-    const req = newRequisition();
+    const medina = data.settings.locations.find(
+      (l) => l.name.toLowerCase() === 'medina'
+    );
+    const req = newRequisition(medina?.id);
     void save(req).then(() => setSelectedId(req.id));
   }
 

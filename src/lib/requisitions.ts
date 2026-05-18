@@ -20,7 +20,7 @@ export function generateApplicantId(): string {
 // Blank constructors
 // ---------------------------------------------------------------------------
 
-export function newRequisition(): Requisition {
+export function newRequisition(defaultLocationId?: string): Requisition {
   const now = new Date().toISOString();
   return {
     id: generateReqId(),
@@ -28,6 +28,7 @@ export function newRequisition(): Requisition {
     positionTitle: '',
     openings: 1,
     status: 'open',
+    locationId: defaultLocationId,
     postingPlatforms: [],
     applicants: [],
     createdAt: now,
