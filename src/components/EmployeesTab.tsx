@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import clsx from 'clsx';
-import { Plus, Pencil, Trash2, X, Check, Users, Info, AlertTriangle, Loader2, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Check, Users, Info, AlertTriangle, Loader2, ChevronDown, ChevronUp, ChevronRight, Briefcase } from 'lucide-react';
 import {
   buildReviews,
   displayDate,
@@ -16,6 +16,7 @@ import {
 import { checkBusy, fetchDayEvents } from '@/lib/googleCalendar';
 import type { CalendarEvent } from '@/lib/googleCalendar';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
+import { useRequisitions } from '@/context/RequisitionsContext';
 import type { AppData, Employee, Holiday, Review, ReviewType, ScheduleEvent } from '@/lib/types';
 
 function generateId(): string {
@@ -366,6 +367,7 @@ interface EmployeesTabProps {
 
 export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
   const { isConnected, accessToken } = useGoogleCalendar();
+  const { requisitions, save: saveReq } = useRequisitions();
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -377,6 +379,61 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
   const [reviewPreviewEvents, setReviewPreviewEvents] = useState<Partial<Record<ReviewType, CalendarEvent[]>>>({});
   const [reviewPreviewLoading, setReviewPreviewLoading] = useState<Partial<Record<ReviewType, boolean>>>({});
   const [reviewPreviewError, setReviewPreviewError] = useState<Partial<Record<ReviewType, boolean>>>({});
+
+  // Hire-from-req linkage (only used when adding a new employee)
+  const [hireLink, setHireLink] = useState<{ reqId: string; applicantId: string } | null>(null);
+
+  // Hired applicants across all reqs that haven't been linked to an employee yet
+  const availableHires = useMemo(() => {
+    const items: {
+      reqId: string;
+      applicantId: string;
+      name: string;
+      reqNumber: string;
+      positionTitle: string;
+      managerId?: string;
+    }[] = [];
+    for (const r of requisitions) {
+      for (const a of r.applicants) {
+        if (a.status !== 'hired') continue;
+        if (a.hiredEmployeeId) continue;
+        items.push({
+          reqId: r.id,
+          applicantId: a.id,
+          name: a.name,
+          reqNumber: r.reqNumber,
+          positionTitle: r.positionTitle,
+          managerId: r.hiringManagerId,
+        });
+      }
+    }
+    return items;
+  }, [requisitions]);
+
+  function applyHireFromReq(applicantId: string) {
+    const item = availableHires.find((h) => h.applicantId === applicantId);
+    if (!item) {
+      setHireLink(null);
+      return;
+    }
+    setHireLink({ reqId: item.reqId, applicantId: item.applicantId });
+    // Parse name into first/last (best effort: "First Last" or "First Middle Last")
+    const trimmed = item.name.trim();
+    const parts = trimmed.split(/\s+/);
+    const firstName = parts[0] ?? '';
+    const lastName = parts.length > 1 ? parts.slice(1).join(' ') : '';
+    setForm((prev) => ({
+      ...prev,
+      firstName,
+      lastName,
+      managerId: item.managerId ?? prev.managerId,
+      email: autoEmail(firstName, lastName),
+    }));
+  }
+
+  function clearHireFromReq() {
+    setHireLink(null);
+  }
 
   // Key that changes whenever an effective date/time changes — drives freeBusy checks
   const reviewCheckKey = form.reviews
@@ -478,6 +535,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
     setForm(buildEmptyForm());
     setEditingId(null);
     setBusyStatus(IDLE_BUSY);
+    setHireLink(null);
     setShowForm(true);
   }
 
@@ -485,6 +543,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
     setForm(employeeToForm(emp));
     setEditingId(emp.id);
     setBusyStatus(IDLE_BUSY);
+    setHireLink(null);
     setShowForm(true);
   }
 
@@ -493,6 +552,7 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
     setEditingId(null);
     setForm(buildEmptyForm());
     setBusyStatus(IDLE_BUSY);
+    setHireLink(null);
     setExpandedReviewPreviews({});
     setReviewPreviewEvents({});
     setReviewPreviewLoading({});
@@ -548,6 +608,22 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
       ? data.employees.map((e) => (e.id === editingId ? employee : e))
       : [...data.employees, employee];
     onChange({ ...data, employees });
+
+    // If this employee came from a hired applicant on a req, mark the linkage
+    if (!editingId && hireLink) {
+      const req = requisitions.find((r) => r.id === hireLink.reqId);
+      if (req) {
+        const updated = {
+          ...req,
+          applicants: req.applicants.map((a) =>
+            a.id === hireLink.applicantId ? { ...a, hiredEmployeeId: employee.id } : a
+          ),
+        };
+        // Fire-and-forget — surface failure quietly; primary employee save already succeeded.
+        void saveReq(updated).catch(() => {});
+      }
+    }
+
     handleCancel();
   }
 
@@ -600,6 +676,49 @@ export default function EmployeesTab({ data, onChange }: EmployeesTabProps) {
           </div>
 
           <div className="space-y-5">
+            {/* Hire from requisition (only when adding) */}
+            {!editingId && availableHires.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-blue-900 mb-1.5">
+                  <Briefcase className="w-4 h-4" />
+                  Hiring from a requisition?
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={hireLink?.applicantId ?? ''}
+                    onChange={(e) => {
+                      if (!e.target.value) clearHireFromReq();
+                      else applyHireFromReq(e.target.value);
+                    }}
+                    className="flex-1 border border-blue-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">— Pick a hired applicant to pre-fill name & manager —</option>
+                    {availableHires.map((h) => (
+                      <option key={h.applicantId} value={h.applicantId}>
+                        {h.name} · Req #{h.reqNumber || '—'}
+                        {h.positionTitle ? ` (${h.positionTitle})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {hireLink && (
+                    <button
+                      type="button"
+                      onClick={clearHireFromReq}
+                      className="px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 rounded transition-colors"
+                      title="Unlink from requisition"
+                    >
+                      Unlink
+                    </button>
+                  )}
+                </div>
+                {hireLink && (
+                  <p className="text-xs text-blue-700 mt-1.5">
+                    On save, this applicant will be marked linked to the new employee.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Last / First name */}
             <div className="grid grid-cols-2 gap-4">
               <div>

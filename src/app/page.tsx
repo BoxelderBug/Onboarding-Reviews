@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ClipboardList, Users, CalendarDays, Settings2, ListChecks, BookOpen } from 'lucide-react';
+import { ClipboardList, Users, CalendarDays, Settings2, ListChecks, BookOpen, Briefcase } from 'lucide-react';
 import clsx from 'clsx';
 import { loadData, saveData, DEFAULT_DATA } from '@/lib/storage';
 import { buildReviews } from '@/lib/dateUtils';
 import { fetchCalendarRooms } from '@/lib/googleCalendar';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
+import { RequisitionsProvider } from '@/context/RequisitionsContext';
 import type { AppData, Employee, Location, Review } from '@/lib/types';
 import ReviewsDashboard from '@/components/ReviewsDashboard';
 import EmployeesTab from '@/components/EmployeesTab';
@@ -14,11 +15,13 @@ import HolidaysTab from '@/components/HolidaysTab';
 import SettingsTab from '@/components/SettingsTab';
 import SchedulingTab from '@/components/SchedulingTab';
 import ReferenceTab from '@/components/ReferenceTab';
+import RequisitionsTab from '@/components/RequisitionsTab';
 
-type Tab = 'reviews' | 'employees' | 'scheduling' | 'holidays' | 'settings' | 'reference';
+type Tab = 'reviews' | 'requisitions' | 'employees' | 'scheduling' | 'holidays' | 'settings' | 'reference';
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: 'reviews', label: 'Reviews', Icon: ClipboardList },
+  { id: 'requisitions', label: 'Requisitions', Icon: Briefcase },
   { id: 'employees', label: 'Employees', Icon: Users },
   { id: 'scheduling', label: 'Scheduling', Icon: ListChecks },
   { id: 'holidays', label: 'Holidays', Icon: CalendarDays },
@@ -167,22 +170,27 @@ export default function Home() {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'reviews' && (
-          <ReviewsDashboard data={data} onUpdateReview={handleUpdateReview} />
-        )}
-        {activeTab === 'employees' && (
-          <EmployeesTab data={data} onChange={handleDataChange} />
-        )}
-        {activeTab === 'scheduling' && (
-          <SchedulingTab data={data} onChange={handleDataChange} />
-        )}
-        {activeTab === 'holidays' && (
-          <HolidaysTab data={data} onChange={handleHolidaysOrSettingsChange} />
-        )}
-        {activeTab === 'settings' && (
-          <SettingsTab data={data} onChange={handleHolidaysOrSettingsChange} />
-        )}
-        {activeTab === 'reference' && <ReferenceTab />}
+        <RequisitionsProvider>
+          {activeTab === 'reviews' && (
+            <ReviewsDashboard data={data} onUpdateReview={handleUpdateReview} />
+          )}
+          {activeTab === 'requisitions' && (
+            <RequisitionsTab data={data} onChange={handleDataChange} />
+          )}
+          {activeTab === 'employees' && (
+            <EmployeesTab data={data} onChange={handleDataChange} />
+          )}
+          {activeTab === 'scheduling' && (
+            <SchedulingTab data={data} onChange={handleDataChange} />
+          )}
+          {activeTab === 'holidays' && (
+            <HolidaysTab data={data} onChange={handleHolidaysOrSettingsChange} />
+          )}
+          {activeTab === 'settings' && (
+            <SettingsTab data={data} onChange={handleHolidaysOrSettingsChange} />
+          )}
+          {activeTab === 'reference' && <ReferenceTab />}
+        </RequisitionsProvider>
       </main>
     </div>
   );

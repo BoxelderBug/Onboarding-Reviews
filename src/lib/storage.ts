@@ -1,6 +1,45 @@
-import type { AppData, Employee, Holiday, Location, Settings } from './types';
+import type { AppData, ApplicantStatusConfig, Employee, Holiday, Interviewer, Location, ScoreOption, Settings } from './types';
 
 const STORAGE_KEY = 'onboarding-reviews';
+
+export const DEFAULT_JOB_SOURCES: string[] = [
+  'Indeed', 'ZipRecruiter', 'Website', "Adam's", 'EE Referral', 'Career Fair',
+  'Craigslist', 'Facebook', 'Glassdoor', 'JobsHQ', 'LinkedIn', 'LJ Network',
+  'MN Diversity', 'MN Works', 'NPMA', 'Handshake', 'Instagram', 'Vocational',
+  'DEED', 'KFAN', 'Internal', 'Email Comp', 'ADP', 'Other',
+];
+
+export const DEFAULT_APPLICANT_STATUSES: ApplicantStatusConfig[] = [
+  { value: 'new',                 label: 'New',                          category: 'pipeline' },
+  { value: 'unable-to-connect',   label: 'Unable to Connect',            category: 'dropped'  },
+  { value: 'phone-scheduled',     label: 'Phone Interview Scheduled',    category: 'pipeline' },
+  { value: 'no-phone-needed',     label: 'No Phone Interview Needed',    category: 'pipeline' },
+  { value: 'rejected-phone',      label: 'Rejected at Phone Interview',  category: 'rejected' },
+  { value: 'interview-scheduled', label: 'Interview Scheduled',          category: 'pipeline' },
+  { value: 'no-call-no-show',     label: 'No Call No Show',              category: 'dropped'  },
+  { value: 'rejected-interview',  label: 'Rejected at Interview',        category: 'rejected' },
+  { value: 'offer-extended',      label: 'Offer Extended',               category: 'pipeline' },
+  { value: 'offer-accepted',      label: 'Offer Accepted',               category: 'pipeline' },
+  { value: 'offer-declined',      label: 'Offer Declined',               category: 'dropped'  },
+  { value: 'offer-rescinded',     label: 'Offer Rescinded',              category: 'rejected' },
+  { value: 'withdrew',            label: 'Withdrew',                     category: 'dropped'  },
+  { value: 'hired',               label: 'Hired',                        category: 'hired'    },
+];
+
+export const DEFAULT_PHONE_SCORE_OPTIONS: ScoreOption[] = [
+  { value: 'red',    label: 'Red',    color: 'red'    },
+  { value: 'yellow', label: 'Yellow', color: 'yellow' },
+  { value: 'green',  label: 'Green',  color: 'green'  },
+];
+
+export const DEFAULT_INTERVIEW_SCORE_OPTIONS: ScoreOption[] = [
+  { value: 'red',    label: 'Red',    color: 'red'    },
+  { value: 'yellow', label: 'Yellow', color: 'yellow' },
+  { value: 'green',  label: 'Green',  color: 'green'  },
+  { value: 'na',     label: 'N/A',    color: 'gray'   },
+];
+
+export const DEFAULT_INTERVIEWERS: Interviewer[] = [];
 
 export const DEFAULT_DATA: AppData = {
   employees: [],
@@ -28,6 +67,11 @@ export const DEFAULT_DATA: AppData = {
     calendarTimeZone: 'America/Chicago',
     firstDaySchedule: [],
     secondDaySchedule: [],
+    jobSources: DEFAULT_JOB_SOURCES,
+    interviewers: DEFAULT_INTERVIEWERS,
+    phoneScoreOptions: DEFAULT_PHONE_SCORE_OPTIONS,
+    interviewScoreOptions: DEFAULT_INTERVIEW_SCORE_OPTIONS,
+    applicantStatuses: DEFAULT_APPLICANT_STATUSES,
   },
 };
 
@@ -54,6 +98,23 @@ export function loadData(): AppData {
           parsed.settings?.calendarTimeZone ?? DEFAULT_DATA.settings.calendarTimeZone,
         firstDaySchedule: parsed.settings?.firstDaySchedule ?? [],
         secondDaySchedule: parsed.settings?.secondDaySchedule ?? [],
+        jobSources:
+          parsed.settings?.jobSources && parsed.settings.jobSources.length > 0
+            ? parsed.settings.jobSources
+            : DEFAULT_JOB_SOURCES,
+        interviewers: parsed.settings?.interviewers ?? DEFAULT_INTERVIEWERS,
+        phoneScoreOptions:
+          parsed.settings?.phoneScoreOptions && parsed.settings.phoneScoreOptions.length > 0
+            ? parsed.settings.phoneScoreOptions
+            : DEFAULT_PHONE_SCORE_OPTIONS,
+        interviewScoreOptions:
+          parsed.settings?.interviewScoreOptions && parsed.settings.interviewScoreOptions.length > 0
+            ? parsed.settings.interviewScoreOptions
+            : DEFAULT_INTERVIEW_SCORE_OPTIONS,
+        applicantStatuses:
+          parsed.settings?.applicantStatuses && parsed.settings.applicantStatuses.length > 0
+            ? parsed.settings.applicantStatuses
+            : DEFAULT_APPLICANT_STATUSES,
       },
     };
   } catch {

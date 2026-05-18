@@ -1,11 +1,19 @@
 'use client';
 
 import { useState } from 'react';
+import clsx from 'clsx';
 import {
   Plus, Pencil, Trash2, Check, X, Settings2, Users, Calendar, Wifi, WifiOff,
-  MapPin, RefreshCw, Loader2, ChevronDown, ChevronRight,
+  MapPin, RefreshCw, Loader2, ChevronDown, ChevronRight, Briefcase, Tag, Gauge,
 } from 'lucide-react';
-import type { AppData, Location, Position, Manager, ReviewType, ScheduleEvent, Settings } from '@/lib/types';
+import type {
+  AppData, ApplicantStatusConfig, Interviewer, Location, Position, Manager,
+  ReviewType, ScheduleEvent, ScoreColor, ScoreOption, Settings,
+} from '@/lib/types';
+import {
+  DEFAULT_APPLICANT_STATUSES, DEFAULT_INTERVIEW_SCORE_OPTIONS, DEFAULT_JOB_SOURCES,
+  DEFAULT_PHONE_SCORE_OPTIONS,
+} from '@/lib/storage';
 import { fetchCalendarRooms } from '@/lib/googleCalendar';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
 
@@ -869,6 +877,94 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
       </div>
 
 
+      {/* Requisition Tracker — grouped */}
+      <div className="border-2 border-blue-100 rounded-xl p-5 bg-blue-50/30 space-y-6">
+        <div className="flex items-center gap-2 -mt-1">
+          <Briefcase className="w-5 h-5 text-blue-600" />
+          <h2 className="text-lg font-semibold text-gray-900">Requisition Tracker</h2>
+        </div>
+        <p className="text-sm text-gray-500 -mt-4">
+          These lists populate the dropdowns and pickers when entering applicants on a requisition.
+        </p>
+
+        {/* Job Sources */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Tag className="w-4 h-4 text-gray-400" />
+            <h3 className="text-sm font-semibold text-gray-900">Job Sources</h3>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            Where applicants come from and where you post reqs (Indeed, Website, EE Referral, NPMA, etc.).
+          </p>
+          <JobSourcesEditor
+            values={settings.jobSources}
+            onChange={(jobSources) => updateSettings({ jobSources })}
+          />
+        </div>
+
+        {/* Interviewers */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Users className="w-4 h-4 text-gray-400" />
+            <h3 className="text-sm font-semibold text-gray-900">Interviewers</h3>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            People who can be assigned to interview an applicant.
+          </p>
+          <InterviewersEditor
+            values={settings.interviewers}
+            onChange={(interviewers) => updateSettings({ interviewers })}
+          />
+        </div>
+
+        {/* Phone Interview Scores */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Gauge className="w-4 h-4 text-gray-400" />
+            <h3 className="text-sm font-semibold text-gray-900">Phone Interview Scores</h3>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            Score buttons shown for phone interview ratings.
+          </p>
+          <ScoreOptionsEditor
+            values={settings.phoneScoreOptions}
+            defaults={DEFAULT_PHONE_SCORE_OPTIONS}
+            onChange={(phoneScoreOptions) => updateSettings({ phoneScoreOptions })}
+          />
+        </div>
+
+        {/* Interview Scores */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Gauge className="w-4 h-4 text-gray-400" />
+            <h3 className="text-sm font-semibold text-gray-900">Interview Scores</h3>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            Score buttons shown for in-person interview ratings.
+          </p>
+          <ScoreOptionsEditor
+            values={settings.interviewScoreOptions}
+            defaults={DEFAULT_INTERVIEW_SCORE_OPTIONS}
+            onChange={(interviewScoreOptions) => updateSettings({ interviewScoreOptions })}
+          />
+        </div>
+
+        {/* Applicant Statuses */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Tag className="w-4 h-4 text-gray-400" />
+            <h3 className="text-sm font-semibold text-gray-900">Applicant Statuses</h3>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            Pipeline statuses for each applicant. The <em>category</em> determines which bucket the applicant falls into in the funnel sidebar.
+          </p>
+          <ApplicantStatusesEditor
+            statuses={settings.applicantStatuses}
+            onChange={(applicantStatuses) => updateSettings({ applicantStatuses })}
+          />
+        </div>
+      </div>
+
       {/* Concurrent Review Scheduling */}
       <div>
         <h2 className="text-base font-semibold text-gray-900 mb-1">Concurrent Review Scheduling</h2>
@@ -1131,6 +1227,586 @@ export default function SettingsTab({ data, onChange }: SettingsTabProps) {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Job Sources Editor (chip-style tag input)
+// ---------------------------------------------------------------------------
+
+function JobSourcesEditor({
+  values, onChange,
+}: { values: string[]; onChange: (vals: string[]) => void }) {
+  const [input, setInput] = useState('');
+
+  function addOne(raw: string) {
+    const v = raw.trim();
+    if (!v) return;
+    if (values.some((s) => s.toLowerCase() === v.toLowerCase())) return;
+    onChange([...values, v]);
+  }
+
+  function handleAdd() {
+    addOne(input);
+    setInput('');
+  }
+
+  function remove(v: string) {
+    onChange(values.filter((s) => s !== v));
+  }
+
+  function resetDefaults() {
+    onChange(DEFAULT_JOB_SOURCES);
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+      <div className="flex flex-wrap gap-1.5 mb-3 min-h-[1.5rem]">
+        {values.length === 0 && (
+          <span className="text-xs text-gray-400 italic">No sources configured.</span>
+        )}
+        {values.map((src) => (
+          <span
+            key={src}
+            className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full"
+          >
+            {src}
+            <button
+              onClick={() => remove(src)}
+              className="text-gray-400 hover:text-red-500 transition-colors"
+              title="Remove"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); handleAdd(); }
+            if (e.key === ',') { e.preventDefault(); handleAdd(); }
+          }}
+          placeholder="Add a source (press Enter)"
+          className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={!input.trim()}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add
+        </button>
+        <button
+          onClick={resetDefaults}
+          className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+          title="Replace list with defaults"
+        >
+          Reset
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Applicant Statuses Editor (table with inline edit)
+// ---------------------------------------------------------------------------
+
+const CATEGORY_OPTIONS: { value: ApplicantStatusConfig['category']; label: string; cls: string }[] = [
+  { value: 'pipeline', label: 'Pipeline', cls: 'bg-sky-100 text-sky-700' },
+  { value: 'hired',    label: 'Hired',    cls: 'bg-emerald-100 text-emerald-700' },
+  { value: 'rejected', label: 'Rejected', cls: 'bg-rose-100 text-rose-700' },
+  { value: 'dropped',  label: 'Dropped',  cls: 'bg-gray-100 text-gray-600' },
+];
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+
+function ApplicantStatusesEditor({
+  statuses, onChange,
+}: { statuses: ApplicantStatusConfig[]; onChange: (s: ApplicantStatusConfig[]) => void }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+  const [newCategory, setNewCategory] = useState<ApplicantStatusConfig['category']>('pipeline');
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  function update(value: string, patch: Partial<ApplicantStatusConfig>) {
+    onChange(statuses.map((s) => (s.value === value ? { ...s, ...patch } : s)));
+  }
+
+  function remove(value: string) {
+    onChange(statuses.filter((s) => s.value !== value));
+    setDeleteConfirm(null);
+  }
+
+  function handleAdd() {
+    const label = newLabel.trim();
+    if (!label) return;
+    let value = slugify(label);
+    if (!value) value = `s-${Date.now()}`;
+    // Ensure unique
+    let candidate = value;
+    let n = 1;
+    while (statuses.some((s) => s.value === candidate)) {
+      candidate = `${value}-${n++}`;
+    }
+    onChange([...statuses, { value: candidate, label, category: newCategory }]);
+    setNewLabel('');
+    setNewCategory('pipeline');
+    setShowAdd(false);
+  }
+
+  function resetDefaults() {
+    onChange(DEFAULT_APPLICANT_STATUSES);
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-end mb-3 gap-2">
+        <button
+          onClick={resetDefaults}
+          className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+          title="Replace list with defaults"
+        >
+          Reset
+        </button>
+        {!showAdd && (
+          <button
+            onClick={() => setShowAdd(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" /> Add Status
+          </button>
+        )}
+      </div>
+
+      {showAdd && (
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Label</label>
+              <input
+                type="text"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                placeholder="e.g. Background Check Pending"
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+              <select
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value as ApplicantStatusConfig['category'])}
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                {CATEGORY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-3">
+            <button
+              onClick={() => { setShowAdd(false); setNewLabel(''); }}
+              className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAdd}
+              disabled={!newLabel.trim()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <Check className="w-3.5 h-3.5" /> Add
+            </button>
+          </div>
+        </div>
+      )}
+
+      {statuses.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-8 text-center bg-white border border-gray-200 rounded-lg shadow-sm">
+          <Tag className="w-7 h-7 text-gray-300 mb-2" />
+          <p className="text-gray-500 text-sm">No statuses configured.</p>
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                {['Label', 'Category', 'ID', ''].map((c) => (
+                  <th key={c} className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {c}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {statuses.map((s) => (
+                <tr key={s.value} className="hover:bg-gray-50">
+                  <td className="px-4 py-2">
+                    <input
+                      type="text"
+                      value={s.label}
+                      onChange={(e) => update(s.value, { label: e.target.value })}
+                      className="w-full border border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <select
+                      value={s.category}
+                      onChange={(e) => update(s.value, { category: e.target.value as ApplicantStatusConfig['category'] })}
+                      className="border border-gray-300 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      {CATEGORY_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-4 py-2 text-xs text-gray-400 font-mono">{s.value}</td>
+                  <td className="px-4 py-2 text-right">
+                    {deleteConfirm === s.value ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => remove(s.value)} className="px-2 py-0.5 text-xs font-medium text-white bg-red-500 rounded hover:bg-red-600">Yes</button>
+                        <button onClick={() => setDeleteConfirm(null)} className="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded hover:bg-gray-200">No</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeleteConfirm(s.value)}
+                        className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+                        title="Delete status"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Interviewers Editor (table similar to Managers but separate list)
+// ---------------------------------------------------------------------------
+
+function newInterviewer(): Interviewer {
+  return { id: generateId(), name: '', email: '' };
+}
+
+function InterviewersEditor({
+  values, onChange,
+}: { values: Interviewer[]; onChange: (v: Interviewer[]) => void }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState<Interviewer>(newInterviewer());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  function openAdd() {
+    setForm(newInterviewer());
+    setEditingId(null);
+    setShowAdd(true);
+  }
+  function openEdit(i: Interviewer) {
+    setForm({ ...i, email: i.email ?? '' });
+    setEditingId(i.id);
+    setShowAdd(true);
+  }
+  function cancel() {
+    setShowAdd(false);
+    setEditingId(null);
+    setForm(newInterviewer());
+  }
+  function save() {
+    const name = form.name.trim();
+    if (!name) return;
+    const item: Interviewer = {
+      id: editingId ?? form.id,
+      name,
+      email: form.email?.trim() || undefined,
+    };
+    const next = editingId
+      ? values.map((v) => (v.id === editingId ? item : v))
+      : [...values, item];
+    onChange(next);
+    cancel();
+  }
+  function remove(id: string) {
+    onChange(values.filter((v) => v.id !== id));
+    setDeleteConfirm(null);
+  }
+
+  return (
+    <div>
+      {!showAdd && (
+        <div className="flex justify-end mb-3">
+          <button
+            onClick={openAdd}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" /> Add Interviewer
+          </button>
+        </div>
+      )}
+
+      {showAdd && (
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Comstock, M"
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Email <span className="text-gray-400">(optional)</span></label>
+              <input
+                type="email"
+                value={form.email ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="mcomstock@adamspestcontrol.com"
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-3">
+            <button onClick={cancel} className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+            <button
+              onClick={save}
+              disabled={!form.name.trim()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <Check className="w-3.5 h-3.5" /> {editingId ? 'Save' : 'Add'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {values.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-8 text-center bg-white border border-gray-200 rounded-lg shadow-sm">
+          <Users className="w-7 h-7 text-gray-300 mb-2" />
+          <p className="text-gray-500 text-sm">No interviewers configured.</p>
+          <p className="text-gray-400 text-xs mt-0.5">Add anyone who could interview an applicant.</p>
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                {['Name', 'Email', ''].map((c) => (
+                  <th key={c} className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {values.map((i) => (
+                <tr key={i.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 text-sm font-medium text-gray-900">{i.name}</td>
+                  <td className="px-4 py-2 text-sm text-gray-600">
+                    {i.email || <span className="text-gray-400 italic text-xs">—</span>}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    {deleteConfirm === i.id ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => remove(i.id)} className="px-2 py-0.5 text-xs font-medium text-white bg-red-500 rounded hover:bg-red-600">Yes</button>
+                        <button onClick={() => setDeleteConfirm(null)} className="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded hover:bg-gray-200">No</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => openEdit(i)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => setDeleteConfirm(i.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Score Options Editor (label + color picker)
+// ---------------------------------------------------------------------------
+
+const SCORE_PALETTE: { color: ScoreColor; cls: string; label: string }[] = [
+  { color: 'red',    cls: 'bg-red-500',    label: 'Red'    },
+  { color: 'yellow', cls: 'bg-yellow-400', label: 'Yellow' },
+  { color: 'green',  cls: 'bg-green-500',  label: 'Green'  },
+  { color: 'blue',   cls: 'bg-blue-500',   label: 'Blue'   },
+  { color: 'purple', cls: 'bg-purple-500', label: 'Purple' },
+  { color: 'gray',   cls: 'bg-gray-500',   label: 'Gray'   },
+];
+
+function ColorSwatch({
+  color, selected, onSelect, size = 'md',
+}: { color: ScoreColor; selected: boolean; onSelect: () => void; size?: 'sm' | 'md' }) {
+  const swatch = SCORE_PALETTE.find((s) => s.color === color);
+  if (!swatch) return null;
+  const dim = size === 'sm' ? 'w-5 h-5' : 'w-6 h-6';
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      title={swatch.label}
+      className={clsx(
+        dim,
+        swatch.cls,
+        'rounded-full transition-all',
+        selected ? 'ring-2 ring-offset-1 ring-gray-700' : 'opacity-60 hover:opacity-100'
+      )}
+    />
+  );
+}
+
+function slugifyScore(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || `s-${Date.now()}`;
+}
+
+function ScoreOptionsEditor({
+  values, defaults, onChange,
+}: { values: ScoreOption[]; defaults: ScoreOption[]; onChange: (v: ScoreOption[]) => void }) {
+  const [newLabel, setNewLabel] = useState('');
+  const [newColor, setNewColor] = useState<ScoreColor>('green');
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  function update(value: string, patch: Partial<ScoreOption>) {
+    onChange(values.map((s) => (s.value === value ? { ...s, ...patch } : s)));
+  }
+
+  function remove(value: string) {
+    onChange(values.filter((s) => s.value !== value));
+    setDeleteConfirm(null);
+  }
+
+  function addNew() {
+    const label = newLabel.trim();
+    if (!label) return;
+    let candidate = slugifyScore(label);
+    let n = 1;
+    while (values.some((s) => s.value === candidate)) {
+      candidate = `${slugifyScore(label)}-${n++}`;
+    }
+    onChange([...values, { value: candidate, label, color: newColor }]);
+    setNewLabel('');
+    setNewColor('green');
+  }
+
+  function reset() {
+    onChange(defaults);
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+      {values.length === 0 ? (
+        <p className="text-xs text-gray-400 italic mb-3">No options configured.</p>
+      ) : (
+        <table className="w-full mb-3">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wider text-gray-400">
+              <th className="font-medium pb-1.5 w-44">Color</th>
+              <th className="font-medium pb-1.5">Label</th>
+              <th className="font-medium pb-1.5 text-gray-300">ID</th>
+              <th className="w-8" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {values.map((s) => (
+              <tr key={s.value}>
+                <td className="py-1.5">
+                  <div className="flex items-center gap-1.5">
+                    {SCORE_PALETTE.map((p) => (
+                      <ColorSwatch
+                        key={p.color}
+                        color={p.color}
+                        size="sm"
+                        selected={s.color === p.color}
+                        onSelect={() => update(s.value, { color: p.color })}
+                      />
+                    ))}
+                  </div>
+                </td>
+                <td className="py-1.5 pr-3">
+                  <input
+                    type="text"
+                    value={s.label}
+                    onChange={(e) => update(s.value, { label: e.target.value })}
+                    className="w-full border border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </td>
+                <td className="py-1.5 text-xs text-gray-400 font-mono">{s.value}</td>
+                <td className="py-1.5 text-right">
+                  {deleteConfirm === s.value ? (
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => remove(s.value)} className="px-1.5 py-0.5 text-[10px] font-medium text-white bg-red-500 rounded hover:bg-red-600">Yes</button>
+                      <button onClick={() => setDeleteConfirm(null)} className="px-1.5 py-0.5 text-[10px] font-medium text-gray-600 bg-gray-100 rounded hover:bg-gray-200">No</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setDeleteConfirm(s.value)} className="p-1 text-gray-300 hover:text-red-500 transition-colors" title="Delete">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {/* Add new */}
+      <div className="border-t border-gray-100 pt-3 flex items-center gap-3 flex-wrap">
+        <span className="text-xs font-medium text-gray-500">New:</span>
+        <div className="flex items-center gap-1.5">
+          {SCORE_PALETTE.map((p) => (
+            <ColorSwatch
+              key={p.color}
+              color={p.color}
+              size="sm"
+              selected={newColor === p.color}
+              onSelect={() => setNewColor(p.color)}
+            />
+          ))}
+        </div>
+        <input
+          type="text"
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNew(); } }}
+          placeholder="Label (e.g. Strong Yes)"
+          className="flex-1 min-w-[160px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          onClick={addNew}
+          disabled={!newLabel.trim()}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add
+        </button>
+        <button
+          onClick={reset}
+          className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+          title="Replace list with defaults"
+        >
+          Reset
+        </button>
       </div>
     </div>
   );
