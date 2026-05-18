@@ -1,0 +1,29 @@
+// Firestore security rules for the hr-comm-center project.
+// Deploy by pasting into Firebase console → Build → Firestore Database → Rules tab
+// (or via `firebase deploy --only firestore:rules` if you use the CLI).
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Only authenticated users with a verified @adamspestcontrol.com Google
+    // account can touch any document. The client-side auth flow also enforces
+    // this, but rules are the only thing that *actually* protects the data.
+    function isAdamsUser() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower().matches('.*@adamspestcontrol[.]com');
+    }
+
+    match /requisitions/{reqId} {
+      allow read, write: if isAdamsUser();
+    }
+
+    // Default-deny everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

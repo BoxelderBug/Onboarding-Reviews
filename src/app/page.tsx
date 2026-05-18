@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ClipboardList, Users, CalendarDays, Settings2, ListChecks, BookOpen, Briefcase } from 'lucide-react';
+import { ClipboardList, Users, CalendarDays, Settings2, ListChecks, BookOpen, Briefcase, LogOut, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import { loadData, saveData, DEFAULT_DATA } from '@/lib/storage';
 import { buildReviews } from '@/lib/dateUtils';
 import { fetchCalendarRooms } from '@/lib/googleCalendar';
 import { useGoogleCalendar } from '@/context/GoogleCalendarContext';
 import { RequisitionsProvider } from '@/context/RequisitionsContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
 import type { AppData, Employee, Location, Review } from '@/lib/types';
 import ReviewsDashboard from '@/components/ReviewsDashboard';
 import EmployeesTab from '@/components/EmployeesTab';
@@ -16,6 +17,7 @@ import SettingsTab from '@/components/SettingsTab';
 import SchedulingTab from '@/components/SchedulingTab';
 import ReferenceTab from '@/components/ReferenceTab';
 import RequisitionsTab from '@/components/RequisitionsTab';
+import SignInScreen from '@/components/SignInScreen';
 
 type Tab = 'reviews' | 'requisitions' | 'employees' | 'scheduling' | 'holidays' | 'settings' | 'reference';
 
@@ -46,6 +48,49 @@ function recalculateAll(data: AppData): AppData {
 }
 
 export default function Home() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
+  );
+}
+
+function AuthGate() {
+  const { isConfigured, loading, user } = useAuth();
+  if (isConfigured && loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+      </div>
+    );
+  }
+  if (isConfigured && !user) {
+    return <SignInScreen />;
+  }
+  return <HomeContent />;
+}
+
+function UserMenu() {
+  const { isConfigured, user, signOut } = useAuth();
+  if (!isConfigured || !user) return null;
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-500 hidden md:inline truncate max-w-[180px]" title={user.email ?? ''}>
+        {user.email}
+      </span>
+      <button
+        onClick={() => signOut()}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+        title="Sign out"
+      >
+        <LogOut className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline">Sign out</span>
+      </button>
+    </div>
+  );
+}
+
+function HomeContent() {
   const [activeTab, setActiveTab] = useState<Tab>('reviews');
   const [data, setData] = useState<AppData>(DEFAULT_DATA);
   const [loaded, setLoaded] = useState(false);
@@ -129,7 +174,7 @@ export default function Home() {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center h-16">
+          <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <div className="bg-blue-600 text-white rounded-lg p-2">
                 <ClipboardList className="w-5 h-5" />
@@ -141,6 +186,7 @@ export default function Home() {
                 <p className="text-xs text-gray-500">Adams Pest Control</p>
               </div>
             </div>
+            <UserMenu />
           </div>
         </div>
       </header>
